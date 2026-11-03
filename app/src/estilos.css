@@ -370,3 +370,21 @@ input:focus { border-color: var(--acento); }
   .mesa-lateral { display: flex; }
   .mesa-chat-botao { display: none; }
 }
+
+/* 2ª leva: poderes no placar, registro de abates, KDA. */
+.placar-poderes { font-size: 11px; color: var(--texto-medio); white-space: nowrap; }
+.abates {
+  position: absolute; top: 6px; right: 6px; margin: 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-end; pointer-events: none;
+}
+.abates li {
+  font-size: 12px; background: rgba(8, 11, 20, 0.72); color: var(--texto);
+  padding: 2px 8px; border-radius: 6px; max-width: 70vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.faixa-linha { font-size: 13px; color: var(--texto-medio); font-weight: 400; }
+.kda { width: 100%; border-collapse: collapse; font-size: 14px; }
+.kda th, .kda td { padding: 6px 4px; text-align: center; border-bottom: 1px solid var(--borda, rgba(255,255,255,0.08)); }
+.kda th { color: var(--texto-medio); font-weight: 500; font-size: 12px; }
+.registro { text-align: left; }
+.registro summary { cursor: pointer; color: var(--texto-medio); margin-bottom: 8px; }
+.registro > div { margin-bottom: 8px; }

@@ -31,8 +31,18 @@ export function App() {
   const narrar = (v: MatchView) => {
     const anterior = quadroAtual()?.view;
     const sala = ler().sala;
+    const eu = ler().eu;
     for (const e of v.eventos) {
-      if (e.tipo === 'MORTE' && e.playerId === ler().eu) errar('Você foi pego pelo fogo!');
+      if (e.tipo === 'MORTE' && e.playerId === eu) {
+        if (e.autor === null) errar('A arena fechou em cima de você!');
+        else if (e.autor === eu) errar('Você caiu na própria bomba!');
+        else errar(`${nomeDe(sala, e.autor)} te pegou!`);
+      }
+      if (e.tipo === 'MALDICAO' && e.playerId === eu) {
+        const efeito = { INVERTIDO: 'direcional invertido', SEM_BOMBA: 'sem bomba', LENTO: 'lento' }[e.maldicao];
+        errar(e.de ? `${nomeDe(sala, e.de)} te passou a caveira: ${efeito}!` : `Caveira: ${efeito}!`);
+      }
+      if (e.tipo === 'MALDICAO' && e.de === eu) avisar(`Você passou a caveira para ${nomeDe(sala, e.playerId)}`);
     }
     if (anterior && anterior.matchId === v.matchId && anterior.fase !== 'FIM_DA_RODADA' && v.fase === 'FIM_DA_RODADA') {
       if (v.vencedorDaRodada) pontuou(`${nomeDe(sala, v.vencedorDaRodada)} venceu a rodada ${v.rodada}`);

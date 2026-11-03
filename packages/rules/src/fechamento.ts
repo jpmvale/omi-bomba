@@ -3,9 +3,9 @@
  *
  * Sem isto, dois jogadores cautelosos (ou dois bots) empatam por tempo em
  * quatro rodadas de cada cinco — foi o que a simulação mostrou na primeira
- * versão. A partir de `FECHAMENTO_APOS_PASSOS` de rodada, uma casa por vez vira
- * parede, em espiral da borda para o centro. Quem estiver nela morre; bomba e
- * item ali somem.
+ * versão. Depois dos minutos combinados na sala (`options.fechamento`), um
+ * bloco por vez cai do céu, começando no canto (1,1) e seguindo em espiral
+ * pelas bordas até o centro. Quem estiver na casa morre; bomba e item ali somem.
  *
  * A ordem é fixa e conhecida por todos (é geometria, não sorteio), e por isso
  * o bot pode fugir dela do mesmo jeito que foge de bomba.

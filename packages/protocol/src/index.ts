@@ -122,7 +122,7 @@ export type Command =
   | { type: 'host:kick'; payload: { playerId: PlayerId } }
   | { type: 'host:addBot'; payload: { difficulty: BotDifficulty } }
   | { type: 'host:removeBot'; payload: { playerId: PlayerId } }
-  | { type: 'host:setOptions'; payload: { options: MatchOptions } }
+  | { type: 'host:setOptions'; payload: { options: { [K in keyof MatchOptions]?: MatchOptions[K] | undefined } } }
   | { type: 'host:startMatch'; payload: Record<string, never> }
   | { type: 'host:endMatch'; payload: Record<string, never> }
   | { type: 'host:rematch'; payload: Record<string, never> }

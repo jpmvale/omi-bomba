@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NOME_DO_PERSONAGEM, type ChatMessage, type Personagem, type RoomView } from '@omi-bomba/protocol';
-import type { Dir, MatchView } from '@omi-bomba/rules';
+import { ALCANCE_INICIAL, type Abate, type Dir, type MatchView } from '@omi-bomba/rules';
 import { Chat } from '../components/Chat';
 import { Controles } from '../components/Controles';
 import { Retrato } from '../components/Retrato';
@@ -124,6 +124,7 @@ export function Jogo({
           <div ref={caixa} className="arena-caixa">
             <canvas ref={tela} className="arena" aria-label="Arena" />
             <Faixa v={v} nomeDe={nomeDe} />
+            {v.fase === 'JOGANDO' && <Abates abates={v.abates.slice(-3)} nomeDe={nomeDe} />}
           </div>
 
           {jogo && toque && !acabou && (
@@ -186,12 +187,45 @@ function Placar({ v, sala, eu }: { v: MatchView; sala: RoomView; eu: string }) {
         return (
           <div key={id} className={`placar-item ${id === eu ? 'placar-item--eu' : ''}`}>
             <Retrato personagem={p.personagem} tamanho={28} apagado={!j?.vivo} />
-            <span className="placar-nome">{id === eu ? 'Você' : p.nickname}</span>
+            <div className="pilha" style={{ gap: 0, minWidth: 0 }}>
+              <span className="placar-nome">{id === eu ? 'Você' : p.nickname}</span>
+              {j?.vivo && <Poderes j={j} />}
+            </div>
             <strong>{v.placar[id] ?? 0}</strong>
           </div>
         );
       })}
     </div>
+  );
+}
+
+/** O que o jogador tem: só o que passou do começo, para caber. */
+function Poderes({ j }: { j: MatchView['jogadores'][number] }) {
+  const partes: string[] = [];
+  if (j.alcance > ALCANCE_INICIAL) partes.push(`🔥${j.alcance}`);
+  if (j.bombas > 1) partes.push(`💣${j.bombas}`);
+  if (j.velocidade > 0) partes.push(`⏩${j.velocidade}`);
+  if (j.chute) partes.push('🥾');
+  if (j.maldicao) partes.push('💀');
+  if (partes.length === 0) return null;
+  return <span className="placar-poderes">{partes.join(' ')}</span>;
+}
+
+/** Uma linha do registro: quem pegou quem. */
+export function frase(a: Abate, nomeDe: (id: string | null) => string): string {
+  if (a.causa === 'FECHAMENTO') return `A arena esmagou ${nomeDe(a.vitima)}`;
+  if (a.autor === a.vitima) return `${nomeDe(a.vitima)} caiu na própria bomba`;
+  const ajuda = a.ajudantes.length > 0 ? ` (com ${a.ajudantes.map(nomeDe).join(', ')})` : '';
+  return `${nomeDe(a.autor)} pegou ${nomeDe(a.vitima)}${ajuda}`;
+}
+
+/** As últimas eliminações da rodada, num canto da arena. */
+function Abates({ abates, nomeDe }: { abates: Abate[]; nomeDe: (id: string | null) => string }) {
+  if (abates.length === 0) return null;
+  return (
+    <ul className="abates">
+      {abates.map((a) => <li key={`${a.passo}-${a.vitima}`}>💥 {frase(a, nomeDe)}</li>)}
+    </ul>
   );
 }
 
@@ -205,7 +239,12 @@ function Faixa({ v, nomeDe }: { v: MatchView; nomeDe: (id: string | null) => str
   if (v.fase === 'FIM_DA_RODADA') {
     return (
       <div className="faixa faixa--fim">
-        {v.vencedorDaRodada ? `${nomeDe(v.vencedorDaRodada)} venceu a rodada!` : 'Empate!'}
+        <div className="pilha" style={{ gap: 6, alignItems: 'center' }}>
+          <span>{v.vencedorDaRodada ? `${nomeDe(v.vencedorDaRodada)} venceu a rodada!` : 'Empate!'}</span>
+          {v.abates.filter((a) => a.rodada === v.rodada).map((a) => (
+            <span key={`${a.passo}-${a.vitima}`} className="faixa-linha">{frase(a, nomeDe)}</span>
+          ))}
+        </div>
       </div>
     );
   }
@@ -222,11 +261,13 @@ function FimDePartida({ v, sala, souHost, nomeDe, enviar }: {
         <div className="pilha" style={{ alignItems: 'center', gap: 6 }}>
           <Retrato personagem={campeao.personagem} tamanho={72} />
           <strong style={{ fontSize: 22 }}>{nomeDe(campeao.id)} venceu a partida!</strong>
-          <span className="fraco">{NOME_DO_PERSONAGEM[campeao.personagem]} · {v.placar[campeao.id] ?? 0} rodadas</span>
+          <span className="fraco">{NOME_DO_PERSONAGEM[campeao.personagem]} · {v.placar[campeao.id] ?? 0} {(v.placar[campeao.id] ?? 0) === 1 ? "rodada" : "rodadas"}</span>
         </div>
       ) : (
         <strong style={{ fontSize: 20 }}>Partida encerrada sem vencedor.</strong>
       )}
+      <Kda v={v} sala={sala} nomeDe={nomeDe} />
+      <Registro v={v} nomeDe={nomeDe} />
       {souHost ? (
         <div className="linha" style={{ justifyContent: 'center' }}>
           <button onClick={() => enviar('host:rematch')}>Revanche</button>
@@ -236,5 +277,57 @@ function FimDePartida({ v, sala, souHost, nomeDe, enviar }: {
         <span className="fraco">Esperando o anfitrião decidir: revanche ou voltar à sala.</span>
       )}
     </section>
+  );
+}
+
+/** Abates, mortes e assistências de cada um na partida. */
+function Kda({ v, sala, nomeDe }: { v: MatchView; sala: RoomView; nomeDe: (id: string | null) => string }) {
+  const linhas = v.playerOrder.map((id) => {
+    const k = v.abates.filter((a) => a.autor === id && a.vitima !== id).length;
+    const d = v.abates.filter((a) => a.vitima === id).length;
+    const as = v.abates.filter((a) => a.ajudantes.includes(id)).length;
+    return { id, k, d, as, vitorias: v.placar[id] ?? 0 };
+  }).sort((a, b) => b.vitorias - a.vitorias || b.k - a.k || a.d - b.d);
+  return (
+    <table className="kda">
+      <thead>
+        <tr><th style={{ textAlign: 'left' }}>Jogador</th><th title="Rodadas vencidas">🏆</th><th title="Abates">A</th><th title="Mortes">M</th><th title="Assistências">As</th></tr>
+      </thead>
+      <tbody>
+        {linhas.map((l) => {
+          const p = sala.players.find((x) => x.id === l.id);
+          return (
+            <tr key={l.id}>
+              <td style={{ textAlign: 'left' }}>
+                <span className="linha" style={{ gap: 6 }}>
+                  {p && <Retrato personagem={p.personagem} tamanho={22} />}
+                  {nomeDe(l.id)}
+                </span>
+              </td>
+              <td>{l.vitorias}</td><td>{l.k}</td><td>{l.d}</td><td>{l.as}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+/** Quem pegou quem, rodada a rodada. */
+function Registro({ v, nomeDe }: { v: MatchView; nomeDe: (id: string | null) => string }) {
+  const rodadas = [...new Set(v.abates.map((a) => a.rodada))].sort((a, b) => a - b);
+  if (rodadas.length === 0) return null;
+  return (
+    <details className="registro">
+      <summary>Quem pegou quem</summary>
+      {rodadas.map((r) => (
+        <div key={r} className="pilha" style={{ gap: 2, textAlign: 'left' }}>
+          <span className="rotulo">rodada {r}</span>
+          {v.abates.filter((a) => a.rodada === r).map((a) => (
+            <span key={`${a.passo}-${a.vitima}`} style={{ fontSize: 14 }}>{frase(a, nomeDe)}</span>
+          ))}
+        </div>
+      ))}
+    </details>
   );
 }

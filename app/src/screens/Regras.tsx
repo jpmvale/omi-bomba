@@ -1,4 +1,4 @@
-import { ALCANCE_INICIAL, ALCANCE_MAX, VELOCIDADE_MAX_NIVEL } from '@omi-bomba/rules';
+import { ALCANCE_INICIAL, ALCANCE_MAX, BOMBAS_MAX, VELOCIDADE_MAX_NIVEL } from '@omi-bomba/rules';
 
 /** As regras em uma gaveta: curtas o bastante para ler esperando a sala encher. */
 export function Regras({ aoFechar }: { aoFechar: () => void }) {
@@ -12,11 +12,20 @@ export function Regras({ aoFechar }: { aoFechar: () => void }) {
         <p>Cada rodada é numa arena nova. Quem ficar por último em pé vence a rodada; quem vencer primeiro o número de rodadas combinado leva a partida.</p>
         <ul className="pilha" style={{ gap: 8, paddingLeft: 18 }}>
           <li><strong>Andar:</strong> setas ou WASD. No celular, o direcional na tela.</li>
-          <li><strong>Bomba:</strong> espaço (ou Enter). No celular, o botão 💣. Uma bomba sua por vez.</li>
+          <li><strong>Bomba:</strong> espaço (ou Enter). No celular, o botão 💣. Começa com uma bomba por vez.</li>
           <li>A bomba explode em <strong>2,5 s</strong> numa cruz. O fogo para nas paredes e quebra a primeira caixa que encontra.</li>
           <li>Fogo que encosta em outra bomba a detona na hora — dá para fazer corrente.</li>
-          <li>Caixas às vezes escondem itens: <strong>🔥 fogo</strong> aumenta o alcance da explosão (começa em {ALCANCE_INICIAL}, vai até {ALCANCE_MAX}) e <strong>⏩ velocidade</strong> deixa você mais rápido (até {VELOCIDADE_MAX_NIVEL} níveis). Fogo destrói item no chão.</li>
-          <li>Depois de 90 s a arena começa a <strong>fechar</strong> em espiral, de fora para dentro. As casas que vão fechar piscam em vermelho.</li>
+          <li>Caixas às vezes escondem itens:
+            <ul style={{ paddingLeft: 16, marginTop: 4 }}>
+              <li><strong>🔥 fogo</strong>: explosão mais longa (começa em {ALCANCE_INICIAL}, vai até {ALCANCE_MAX}).</li>
+              <li><strong>💣 bomba</strong>: uma bomba a mais ao mesmo tempo (até {BOMBAS_MAX}).</li>
+              <li><strong>⏩ velocidade</strong>: mais rápido (até {VELOCIDADE_MAX_NIVEL} níveis).</li>
+              <li><strong>🥾 chute</strong> (raro): ande contra uma bomba para empurrá-la; ela escorrega até bater em algo.</li>
+              <li><strong>💀 caveira</strong>: maldição por 15 s — direcional invertido, sem bomba ou lento. Encoste em alguém para passar a caveira adiante.</li>
+            </ul>
+            Fogo destrói item no chão. Quem morre espalha pela arena os itens que tinha.
+          </li>
+          <li>Depois do tempo combinado na sala (1, 3 ou 5 min), <strong>blocos caem do céu</strong> do canto para o centro, em espiral. Quem estiver embaixo é esmagado.</li>
           <li>Se cair a conexão, um bot segura o seu personagem até você voltar.</li>
         </ul>
         <button onClick={aoFechar}>Entendi</button>

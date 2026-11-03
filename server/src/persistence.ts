@@ -11,7 +11,7 @@
  */
 
 import { LIMITS } from '@omi-bomba/protocol';
-import type { Room } from '@omi-bomba/room';
+import { migrarSala, type Room } from '@omi-bomba/room';
 import { roomKey, type RoomStore } from '@omi-bomba/store';
 
 /**
@@ -102,7 +102,8 @@ export function createPersistence({
         codes.map(async (code) => (await store.get(roomKey(code)))?.value as Room | undefined),
       );
 
-      const rooms = found.filter((room): room is Room => room !== undefined);
+      // Gravada por uma versão anterior: completa os campos novos.
+      const rooms = found.filter((room): room is Room => room !== undefined).map(migrarSala);
       // Sala que expirou no store não volta, mas o índice precisa refletir isso
       // na próxima gravação — senão a carga seguinte tenta de novo para sempre.
       for (const room of rooms) known.add(room.code);

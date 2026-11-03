@@ -4,13 +4,16 @@
  * `passo(m)` devolve o estado seguinte, sem tocar no anterior. A ordem dentro
  * do passo é parte da regra e está escrita uma vez só, aqui:
  *
- *   1. bombas pedidas são colocadas
- *   2. todo mundo anda
- *   3. o fogo que já durou o bastante se apaga
- *   4. bombas vencidas (e as atingidas por fogo) explodem, em cadeia
- *   5. quem está sobre um item o pega
- *   6. quem está sobre fogo morre
- *   7. a rodada acaba se sobrou um (ou ninguém), ou se o tempo esgotou
+ *   1. a caveira que venceu acaba
+ *   2. bombas pedidas são colocadas
+ *   3. todo mundo anda (e quem tem chute empurra a bomba em que esbarra)
+ *   4. bombas chutadas escorregam
+ *   5. o fogo que já durou o bastante se apaga
+ *   6. bombas vencidas (e as atingidas por fogo) explodem, em cadeia
+ *   7. a arena fecha mais um bloco, se for a hora
+ *   8. quem está sobre um item o pega; a caveira passa de um para outro
+ *   9. quem está sobre fogo morre, e os itens dele se espalham pela arena
+ *  10. a rodada acaba se sobrou um (ou ninguém), ou se a arena fechou toda
  *
  * Morrer DEPOIS de explodir e no mesmo passo para todos é o que faz duas
  * bombas que pegam dois jogadores ao mesmo tempo darem empate, e não vitória
@@ -20,21 +23,26 @@
 import {
   ALCANCE_INICIAL,
   ALCANCE_MAX,
-  BOMBAS_POR_JOGADOR,
+  BOMBAS_INICIAIS,
+  BOMBAS_MAX,
   CONTAGEM_PASSOS,
-  FECHAMENTO_APOS_PASSOS,
+  DESLIZE_POR_PASSO,
   FECHAMENTO_INTERVALO_PASSOS,
   FIM_DA_RODADA_PASSOS,
   FOGO_PASSOS,
+  IMUNE_APOS_PASSAR,
   LARGURA,
+  MALDICAO_PASSOS,
   MAX_JOGADORES,
   MIN_JOGADORES,
+  PASSOS_POR_SEGUNDO,
   PAVIO_PASSOS,
-  RODADA_PASSOS,
   UNIDADE,
   VELOCIDADE_BASE,
+  VELOCIDADE_LENTA,
   VELOCIDADE_MAX_NIVEL,
   VELOCIDADE_POR_NIVEL,
+  fechamentoEmPassos,
 } from './constantes.js';
 import { ESPIRAL } from './fechamento.js';
 import { DELTA, dentro, gerarArena, indice, NASCEDOUROS, OPOSTA } from './mapa.js';
@@ -43,16 +51,22 @@ import {
   CAIXA,
   CHAO,
   DIRECOES,
+  MALDICOES,
   PAREDE,
   type Bomba,
   type Chama,
+  type Dir,
   type EndReason,
   type Entrada,
   type JogadorNoJogo,
   type MatchOptions,
   type MatchState,
   type PlayerId,
+  type TipoItem,
 } from './types.js';
+
+/** Do primeiro bloco ao último: a espiral inteira, e a rodada acaba logo depois. */
+const DURACAO_DO_FECHAMENTO = ESPIRAL.length * FECHAMENTO_INTERVALO_PASSOS + PASSOS_POR_SEGUNDO;
 
 export interface CreateMatchParams {
   matchId: string;
@@ -90,6 +104,7 @@ export function createMatch({ matchId, seed, playerIds, options }: CreateMatchPa
     ocultos: {},
     proximaBomba: 1,
     placar,
+    abates: [],
     vencedorDaRodada: null,
     endReason: null,
     campeao: null,
@@ -127,6 +142,10 @@ function iniciarRodada(m: MatchState, rodada: number): MatchState {
       morreuNoPasso: null,
       alcance: ALCANCE_INICIAL,
       velocidade: 0,
+      bombas: BOMBAS_INICIAIS,
+      chute: false,
+      maldicao: null,
+      imuneAte: 0,
     };
   });
   // A lista volta para a ordem da partida: o desenho e o placar não dançam.
@@ -137,7 +156,7 @@ function iniciarRodada(m: MatchState, rodada: number): MatchState {
     rodada,
     fase: 'CONTAGEM',
     faseAtePasso: m.passo + CONTAGEM_PASSOS,
-    fechaNoPasso: m.passo + CONTAGEM_PASSOS + FECHAMENTO_APOS_PASSOS,
+    fechaNoPasso: m.passo + CONTAGEM_PASSOS + fechamentoEmPassos(m.options.fechamento),
     fechadas: 0,
     grade,
     gradeVersao: m.gradeVersao + 1,
@@ -155,7 +174,8 @@ function iniciarRodada(m: MatchState, rodada: number): MatchState {
 // Consultas
 // ---------------------------------------------------------------------------
 
-export const velocidadeDe = (j: JogadorNoJogo): number => VELOCIDADE_BASE + j.velocidade * VELOCIDADE_POR_NIVEL;
+export const velocidadeDe = (j: JogadorNoJogo): number =>
+  j.maldicao?.tipo === 'LENTO' ? VELOCIDADE_LENTA : VELOCIDADE_BASE + j.velocidade * VELOCIDADE_POR_NIVEL;
 
 /** A casa em que o jogador conta como estando: a mais próxima do corpo. */
 export function casaOcupada(j: JogadorNoJogo): [number, number] {
@@ -211,7 +231,8 @@ export function passo(anterior: MatchState): MatchState {
     for (const j of m.jogadores) j.querBomba = false;
     if (agora >= m.faseAtePasso) {
       m.fase = 'JOGANDO';
-      m.faseAtePasso = agora + RODADA_PASSOS;
+      // O teto da rodada é a arena fechada por inteiro.
+      m.faseAtePasso = m.fechaNoPasso + DURACAO_DO_FECHAMENTO;
     }
     return m;
   }
@@ -221,12 +242,15 @@ export function passo(anterior: MatchState): MatchState {
     return proximaRodadaOuFim(m);
   }
 
+  for (const j of m.jogadores) if (j.maldicao && j.maldicao.atePasso <= agora) j.maldicao = null;
   colocarBombas(m, agora);
   mover(m);
+  deslizar(m);
   m.chamas = m.chamas.filter((c) => c.ateOPasso > agora);
   explodir(m, agora);
   fechar(m, agora);
   coletar(m, agora);
+  passarCaveira(m, agora);
   matar(m, agora);
   conferirFimDaRodada(m, agora);
   return m;
@@ -236,10 +260,10 @@ function colocarBombas(m: MatchState, agora: number): void {
   for (const j of m.jogadores) {
     if (!j.querBomba) continue;
     j.querBomba = false;
-    if (!j.vivo) continue;
+    if (!j.vivo || j.maldicao?.tipo === 'SEM_BOMBA') continue;
     const [x, y] = casaOcupada(j);
     if (bombaEm(m, x, y)) continue;
-    if (m.bombas.filter((b) => b.dono === j.id).length >= BOMBAS_POR_JOGADOR) continue;
+    if (m.bombas.filter((b) => b.dono === j.id).length >= j.bombas) continue;
     m.bombas.push({
       id: m.proximaBomba++,
       x,
@@ -248,6 +272,7 @@ function colocarBombas(m: MatchState, agora: number): void {
       alcance: j.alcance,
       colocadaNoPasso: agora,
       explodeNoPasso: agora + PAVIO_PASSOS,
+      deslize: null,
     });
     m.eventos.push({ tipo: 'BOMBA', playerId: j.id });
   }
@@ -264,28 +289,36 @@ function colocarBombas(m: MatchState, agora: number): void {
  * A sobra de um passo que chega no centro continua no mesmo passo, senão a
  * velocidade dependeria de quantos centros a pessoa atravessa.
  */
+/** A direção que vale: a caveira de direcional invertido troca cada uma pela oposta. */
+const direcaoDe = (j: JogadorNoJogo): Dir | null =>
+  j.querDir !== null && j.maldicao?.tipo === 'INVERTIDO' ? OPOSTA[j.querDir] : j.querDir;
+
 function mover(m: MatchState): void {
   for (const j of m.jogadores) {
     if (!j.vivo) continue;
     let resto = velocidadeDe(j);
     let inverteu = false;
+    const quer = direcaoDe(j);
 
     while (resto > 0) {
       if (!j.mov) {
-        const d = j.querDir;
+        const d = quer;
         if (!d) break;
         j.olhando = d;
         const [dx, dy] = DELTA[d];
-        if (!livre(m, j.x + dx, j.y + dy)) break;
+        if (!livre(m, j.x + dx, j.y + dy)) {
+          if (j.chute) chutar(m, j, d);
+          break;
+        }
         j.mov = { dir: d, progresso: 0 };
-      } else if (!inverteu && j.querDir !== null && j.querDir === OPOSTA[j.mov.dir]) {
+      } else if (!inverteu && quer !== null && quer === OPOSTA[j.mov.dir]) {
         inverteu = true;
         if (livre(m, j.x, j.y)) {
           const [dx, dy] = DELTA[j.mov.dir];
           j.x += dx;
           j.y += dy;
-          j.mov = { dir: j.querDir, progresso: UNIDADE - j.mov.progresso };
-          j.olhando = j.querDir;
+          j.mov = { dir: quer, progresso: UNIDADE - j.mov.progresso };
+          j.olhando = quer;
         }
       }
 
@@ -298,9 +331,59 @@ function mover(m: MatchState): void {
         j.x += dx;
         j.y += dy;
         j.mov = null;
-        if (!j.querDir) break;
+        // Quem deu meia-volta para no centro da casa a que voltou, sem levar a
+        // sobra adiante: voltar é "voltar para ESTA casa". Levando a sobra, o
+        // bot que voltava para virar de lado passava do ponto, voltava de
+        // novo e ficava tremendo no lugar. Para a pessoa é um passo só.
+        if (!quer || inverteu) break;
       }
     }
+  }
+}
+
+/**
+ * Bomba pode escorregar para esta casa? Para em tudo: bloco, outra bomba,
+ * item e gente.
+ */
+function livreParaBomba(m: MatchState, x: number, y: number): boolean {
+  if (!livre(m, x, y)) return false;
+  if (m.itens.some((it) => it.x === x && it.y === y)) return false;
+  return !m.jogadores.some((j) => {
+    if (!j.vivo) return false;
+    const [cx, cy] = casaOcupada(j);
+    return cx === x && cy === y;
+  });
+}
+
+/** Quem tem chute e anda contra uma bomba parada a empurra, se ela tem para onde ir. */
+function chutar(m: MatchState, j: JogadorNoJogo, d: Dir): void {
+  const [dx, dy] = DELTA[d];
+  const b = bombaEm(m, j.x + dx, j.y + dy);
+  if (!b || b.deslize) return;
+  if (!livreParaBomba(m, b.x + dx, b.y + dy)) return;
+  b.deslize = { dir: d, progresso: 0 };
+  m.eventos.push({ tipo: 'CHUTE', playerId: j.id });
+}
+
+/**
+ * Bomba chutada escorrega casa a casa. Ela conta como estando na casa de onde
+ * saiu até chegar inteira na seguinte; antes de cada casa nova confere de novo
+ * o caminho, porque alguém pode ter entrado na frente.
+ */
+function deslizar(m: MatchState): void {
+  for (const b of m.bombas) {
+    if (!b.deslize) continue;
+    const [dx, dy] = DELTA[b.deslize.dir];
+    if (!livreParaBomba(m, b.x + dx, b.y + dy)) {
+      b.deslize = null;
+      continue;
+    }
+    b.deslize.progresso += DESLIZE_POR_PASSO;
+    if (b.deslize.progresso < UNIDADE) continue;
+    b.x += dx;
+    b.y += dy;
+    b.deslize.progresso -= UNIDADE;
+    if (!livreParaBomba(m, b.x + dx, b.y + dy)) b.deslize = null;
   }
 }
 
@@ -310,6 +393,7 @@ function acenderChama(m: MatchState, nova: Chama): void {
     m.chamas.push(nova);
     return;
   }
+  for (const d of nova.donos) if (!ja.donos.includes(d)) ja.donos.push(d);
   ja.ateOPasso = Math.max(ja.ateOPasso, nova.ateOPasso);
   // Dois braços se cruzando viram um centro: é o que o desenho precisa saber.
   if (ja.forma !== nova.forma) ja.forma = 'CENTRO';
@@ -326,7 +410,7 @@ function explodir(m: MatchState, agora: number): void {
     if (!m.bombas.includes(b)) continue;
     m.bombas = m.bombas.filter((x) => x !== b);
     m.eventos.push({ tipo: 'EXPLOSAO', x: b.x, y: b.y });
-    acenderChama(m, { x: b.x, y: b.y, ateOPasso: ate, forma: 'CENTRO', ponta: false });
+    acenderChama(m, { x: b.x, y: b.y, ateOPasso: ate, forma: 'CENTRO', ponta: false, donos: [b.dono] });
 
     for (const d of DIRECOES) {
       const [dx, dy] = DELTA[d];
@@ -347,13 +431,13 @@ function explodir(m: MatchState, agora: number): void {
             delete m.ocultos[i];
             m.itens.push({ x, y, tipo: escondido, visivelNoPasso: ate });
           }
-          acenderChama(m, { x, y, ateOPasso: ate, forma, ponta: true });
+          acenderChama(m, { x, y, ateOPasso: ate, forma, ponta: true, donos: [b.dono] });
           break;
         }
 
         const outra = bombaEm(m, x, y);
         if (outra) {
-          acenderChama(m, { x, y, ateOPasso: ate, forma, ponta: true });
+          acenderChama(m, { x, y, ateOPasso: ate, forma, ponta: true, donos: [b.dono] });
           if (!fila.includes(outra)) fila.push(outra);
           break;
         }
@@ -361,11 +445,11 @@ function explodir(m: MatchState, agora: number): void {
         const item = m.itens.find((it) => it.x === x && it.y === y && it.visivelNoPasso <= agora);
         if (item) {
           m.itens = m.itens.filter((it) => it !== item);
-          acenderChama(m, { x, y, ateOPasso: ate, forma, ponta: true });
+          acenderChama(m, { x, y, ateOPasso: ate, forma, ponta: true, donos: [b.dono] });
           break;
         }
 
-        acenderChama(m, { x, y, ateOPasso: ate, forma, ponta: k === b.alcance });
+        acenderChama(m, { x, y, ateOPasso: ate, forma, ponta: k === b.alcance, donos: [b.dono] });
       }
     }
   }
@@ -397,11 +481,7 @@ function fechar(m: MatchState, agora: number): void {
       if (!j.vivo) continue;
       const [ox, oy] = casaOcupada(j);
       if (ox === x && oy === y) {
-        j.vivo = false;
-        j.morreuNoPasso = agora;
-        j.mov = null;
-        j.querDir = null;
-        m.eventos.push({ tipo: 'MORTE', playerId: j.id });
+        morrer(m, j, agora, null, [], 'FECHAMENTO');
         continue;
       }
       if (!j.mov) continue;
@@ -425,9 +505,45 @@ function coletar(m: MatchState, agora: number): void {
     const item = m.itens.find((it) => it.x === x && it.y === y && it.visivelNoPasso <= agora);
     if (!item) continue;
     m.itens = m.itens.filter((it) => it !== item);
-    if (item.tipo === 'FOGO') j.alcance = Math.min(ALCANCE_MAX, j.alcance + 1);
-    else j.velocidade = Math.min(VELOCIDADE_MAX_NIVEL, j.velocidade + 1);
     m.eventos.push({ tipo: 'PEGOU', playerId: j.id, item: item.tipo });
+    switch (item.tipo) {
+      case 'FOGO': j.alcance = Math.min(ALCANCE_MAX, j.alcance + 1); break;
+      case 'VELOCIDADE': j.velocidade = Math.min(VELOCIDADE_MAX_NIVEL, j.velocidade + 1); break;
+      case 'BOMBA': j.bombas = Math.min(BOMBAS_MAX, j.bombas + 1); break;
+      case 'CHUTE': j.chute = true; break;
+      case 'CAVEIRA': {
+        // Qual maldição sai da semente e do passo: sorteio, mas repetível.
+        const rng = createRng(`${m.seed}:caveira:${agora}:${j.id}`);
+        const tipo = MALDICOES[rng.nextInt(MALDICOES.length)]!;
+        j.maldicao = { tipo, atePasso: agora + MALDICAO_PASSOS };
+        m.eventos.push({ tipo: 'MALDICAO', playerId: j.id, maldicao: tipo, de: null });
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Quem está com a caveira e cruza com alguém sem ela passa a maldição adiante
+ * (a mesma, com o tempo cheio) e fica livre. Quem acabou de passar não a pega
+ * de volta enquanto os dois ainda estão na mesma casa.
+ */
+function passarCaveira(m: MatchState, agora: number): void {
+  const recebeu = new Set<PlayerId>();
+  for (const j of m.jogadores) {
+    if (!j.vivo || !j.maldicao || recebeu.has(j.id)) continue;
+    const [x, y] = casaOcupada(j);
+    const alvo = m.jogadores.find((k) => {
+      if (k === j || !k.vivo || k.maldicao || k.imuneAte > agora) return false;
+      const [kx, ky] = casaOcupada(k);
+      return kx === x && ky === y;
+    });
+    if (!alvo) continue;
+    alvo.maldicao = { tipo: j.maldicao.tipo, atePasso: agora + MALDICAO_PASSOS };
+    m.eventos.push({ tipo: 'MALDICAO', playerId: alvo.id, maldicao: j.maldicao.tipo, de: j.id });
+    j.maldicao = null;
+    j.imuneAte = agora + IMUNE_APOS_PASSAR;
+    recebeu.add(alvo.id);
   }
 }
 
@@ -435,12 +551,67 @@ function matar(m: MatchState, agora: number): void {
   for (const j of m.jogadores) {
     if (!j.vivo) continue;
     const [x, y] = casaOcupada(j);
-    if (!queimando(m, x, y)) continue;
-    j.vivo = false;
-    j.morreuNoPasso = agora;
-    j.mov = null;
-    j.querDir = null;
-    m.eventos.push({ tipo: 'MORTE', playerId: j.id });
+    const chama = m.chamas.find((c) => c.x === x && c.y === y);
+    if (!chama) continue;
+    // O autor é o dono de outro fogo que chegou ali; só a própria bomba é suicídio.
+    const autor = chama.donos.find((d) => d !== j.id) ?? (chama.donos.includes(j.id) ? j.id : null);
+    const ajudantes = chama.donos.filter((d) => d !== autor && d !== j.id);
+    morrer(m, j, agora, autor, ajudantes, 'FOGO');
+  }
+}
+
+function morrer(
+  m: MatchState,
+  j: JogadorNoJogo,
+  agora: number,
+  autor: PlayerId | null,
+  ajudantes: PlayerId[],
+  causa: 'FOGO' | 'FECHAMENTO',
+): void {
+  j.vivo = false;
+  j.morreuNoPasso = agora;
+  j.mov = null;
+  j.querDir = null;
+  m.abates.push({ rodada: m.rodada, passo: agora, vitima: j.id, autor, ajudantes, causa });
+  m.eventos.push({ tipo: 'MORTE', playerId: j.id, autor });
+  espalharItens(m, j, agora);
+}
+
+/**
+ * Quem morre devolve à arena o que tinha pegado: cada nível de fogo, de
+ * velocidade e de bomba, o chute e a caveira viram itens em casas livres
+ * sorteadas — longe do fogo e da parede que vem vindo.
+ */
+function espalharItens(m: MatchState, j: JogadorNoJogo, agora: number): void {
+  const devolver: TipoItem[] = [];
+  for (let k = ALCANCE_INICIAL; k < j.alcance; k++) devolver.push('FOGO');
+  for (let k = 0; k < j.velocidade; k++) devolver.push('VELOCIDADE');
+  for (let k = BOMBAS_INICIAIS; k < j.bombas; k++) devolver.push('BOMBA');
+  if (j.chute) devolver.push('CHUTE');
+  if (j.maldicao) devolver.push('CAVEIRA');
+  j.alcance = ALCANCE_INICIAL;
+  j.velocidade = 0;
+  j.bombas = BOMBAS_INICIAIS;
+  j.chute = false;
+  j.maldicao = null;
+  if (devolver.length === 0) return;
+
+  // As casas que a espiral fecha nos próximos 5 s ficam de fora.
+  const fechandoLogo = new Set(ESPIRAL.slice(0, fechadasEm(m.fechaNoPasso, agora + 5 * PASSOS_POR_SEGUNDO)));
+  const ocupadas = new Set(m.jogadores.filter((k) => k.vivo).map((k) => indice(...casaOcupada(k))));
+  const livres: number[] = [];
+  for (let i = 0; i < m.grade.length; i++) {
+    if (m.grade[i] !== CHAO || fechandoLogo.has(i) || ocupadas.has(i)) continue;
+    const x = i % LARGURA;
+    const y = Math.floor(i / LARGURA);
+    if (bombaEm(m, x, y) || queimando(m, x, y) || m.itens.some((it) => it.x === x && it.y === y)) continue;
+    livres.push(i);
+  }
+  const rng = createRng(`${m.seed}:espalha:${agora}:${j.id}`);
+  for (const tipo of devolver) {
+    if (livres.length === 0) break;
+    const i = livres.splice(rng.nextInt(livres.length), 1)[0]!;
+    m.itens.push({ x: i % LARGURA, y: Math.floor(i / LARGURA), tipo, visivelNoPasso: agora });
   }
 }
 

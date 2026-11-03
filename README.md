@@ -15,8 +15,11 @@ mesma arquitetura de sala, convite e bots, e o mesmo jeito de publicar na VPS.
 - Oito personagens próprios para escolher (Pavio, Brasa, Faísca, Névoa, Trovão, Musgo,
   Coral, Carvão), únicos na arena.
 - Bots em três níveis para completar a arena.
-- Arena 15×13 nova a cada rodada, com caixas, itens de **fogo** (alcance) e **velocidade**,
-  explosão em corrente e arena que fecha em espiral depois de 90 s.
+- Arena 15×13 nova a cada rodada, com caixas e itens de **fogo**, **velocidade**, **bomba**,
+  **chute** e **caveira** (maldição que passa adiante). Quem morre espalha os itens que tinha.
+- Explosão em corrente; depois de 1, 3 ou 5 min (o anfitrião escolhe) caem blocos do céu
+  em espiral, fechando a arena.
+- Registro de quem pegou quem e KDA no fim da partida.
 - Partida em 1, 2, 3 ou 5 rodadas vencidas; revanche ou volta à sala.
 - Teclado (setas/WASD + espaço) e toque (direcional e botão de bomba na tela).
 - Chat com silenciar e expulsar; espectadores; reconexão sozinha, com um bot segurando o

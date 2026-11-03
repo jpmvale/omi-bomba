@@ -21,15 +21,24 @@ export const CHAO: Celula = 0;
 export const PAREDE: Celula = 1;
 export const CAIXA: Celula = 2;
 
-/** Só os dois melhoramentos da primeira versão: alcance do fogo e velocidade. */
-export type TipoItem = 'FOGO' | 'VELOCIDADE';
-export const TIPOS_DE_ITEM: readonly TipoItem[] = ['FOGO', 'VELOCIDADE'];
+/**
+ * Fogo (alcance), velocidade, bomba (uma a mais por vez), chute (empurra
+ * bomba) e caveira — que não é melhoria: é uma maldição que passa adiante.
+ */
+export type TipoItem = 'FOGO' | 'VELOCIDADE' | 'BOMBA' | 'CHUTE' | 'CAVEIRA';
+export const TIPOS_DE_ITEM: readonly TipoItem[] = ['FOGO', 'VELOCIDADE', 'BOMBA', 'CHUTE', 'CAVEIRA'];
+
+/** O que a caveira faz: inverte o direcional, impede a bomba ou deixa lento. */
+export type Maldicao = 'INVERTIDO' | 'SEM_BOMBA' | 'LENTO';
+export const MALDICOES: readonly Maldicao[] = ['INVERTIDO', 'SEM_BOMBA', 'LENTO'];
 
 export type Fase = 'CONTAGEM' | 'JOGANDO' | 'FIM_DA_RODADA';
 
 export interface MatchOptions {
   /** Rodadas que alguém precisa vencer para levar a partida. */
   vitorias: number;
+  /** Minutos de rodada até a arena começar a fechar: 1, 3 ou 5. */
+  fechamento: number;
 }
 
 export interface Movimento {
@@ -54,6 +63,14 @@ export interface JogadorNoJogo {
   alcance: number;
   /** Níveis de velocidade coletados, de 0 a `VELOCIDADE_MAX_NIVEL`. */
   velocidade: number;
+  /** Quantas bombas pode ter armadas ao mesmo tempo. */
+  bombas: number;
+  /** Pegou o chute: andar contra uma bomba a empurra. */
+  chute: boolean;
+  /** A caveira, enquanto dura. */
+  maldicao: { tipo: Maldicao; atePasso: number } | null;
+  /** Acabou de passar a caveira: não a recebe de volta até este passo. */
+  imuneAte: number;
 }
 
 export interface Bomba {
@@ -64,6 +81,8 @@ export interface Bomba {
   alcance: number;
   colocadaNoPasso: number;
   explodeNoPasso: number;
+  /** Chutada: escorrega nesta direção até bater em alguma coisa. */
+  deslize: Movimento | null;
 }
 
 /** Eixo é só para o desenho: centro, braço horizontal ou vertical, ponta. */
@@ -73,6 +92,20 @@ export interface Chama {
   ateOPasso: number;
   forma: 'CENTRO' | 'H' | 'V';
   ponta: boolean;
+  /** Donos das bombas cujo fogo chegou aqui: é como se sabe quem matou quem. */
+  donos: PlayerId[];
+}
+
+/** Uma eliminação, para o log da rodada e o KDA do fim da partida. */
+export interface Abate {
+  rodada: number;
+  passo: number;
+  vitima: PlayerId;
+  /** Dono do fogo que matou (a própria vítima, se foi a bomba dela); `null` na arena fechando. */
+  autor: PlayerId | null;
+  /** Outros donos de fogo que estavam na mesma casa: a assistência. */
+  ajudantes: PlayerId[];
+  causa: 'FOGO' | 'FECHAMENTO';
 }
 
 export interface Item {
@@ -90,7 +123,9 @@ export interface Item {
 /** O que aconteceu neste passo, para o cliente tocar efeito. */
 export type Evento =
   | { tipo: 'EXPLOSAO'; x: number; y: number }
-  | { tipo: 'MORTE'; playerId: PlayerId }
+  | { tipo: 'MORTE'; playerId: PlayerId; autor: PlayerId | null }
+  | { tipo: 'CHUTE'; playerId: PlayerId }
+  | { tipo: 'MALDICAO'; playerId: PlayerId; maldicao: Maldicao; de: PlayerId | null }
   | { tipo: 'PEGOU'; playerId: PlayerId; item: TipoItem }
   | { tipo: 'BOMBA'; playerId: PlayerId }
   | { tipo: 'FECHOU'; x: number; y: number };
@@ -123,6 +158,8 @@ export interface MatchState {
   ocultos: Record<number, TipoItem>;
   proximaBomba: number;
   placar: Record<PlayerId, number>;
+  /** Quem matou quem, na partida inteira. */
+  abates: Abate[];
   /** Fim da rodada: quem venceu, ou `null` se empatou. */
   vencedorDaRodada: PlayerId | null;
   endReason: EndReason | null;

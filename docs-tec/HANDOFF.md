@@ -3,8 +3,10 @@
 ## Estado
 
 - Jogo jogável de ponta a ponta: sala com link, escolha de personagem, bots em 3 níveis,
-  arena 15×13 a 20 passos/s, bombas, corrente, caixas, itens de fogo e velocidade, arena
-  que fecha em espiral, rodadas e partida, revanche, chat, queda com bot ao volante.
+  arena 15×13 a 20 passos/s, bombas, corrente, caixas, itens de fogo, velocidade, bomba,
+  chute e caveira, itens de quem morre espalhados, arena que fecha (1, 3 ou 5 min) com
+  blocos caindo do céu, registro de quem pegou quem com KDA no fim, revanche, chat, queda
+  com bot ao volante.
 - Controles: teclado (setas/WASD + espaço) e toque (direcional + botão de bomba).
 - Testes: motor, bot (com simulação de partidas inteiras conferindo invariantes), sala,
   servidor de ponta a ponta, contrato do Redis (só com `REDIS_URL`).

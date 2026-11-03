@@ -7,7 +7,7 @@
  */
 
 import { z } from 'zod';
-import { VITORIAS_OPCOES } from '@omi-bomba/rules';
+import { FECHAMENTO_OPCOES, VITORIAS_OPCOES } from '@omi-bomba/rules';
 import {
   BOT_DIFFICULTIES,
   LIMITS,
@@ -46,10 +46,14 @@ export const roomCodeSchema = z
     message: 'código contém caracteres inválidos',
   });
 
+/** Cada campo é opcional: o anfitrião manda só o que mudou, e a sala junta. */
 export const matchOptionsSchema = z.object({
   vitorias: z.int().refine((v) => (VITORIAS_OPCOES as readonly number[]).includes(v), {
     message: 'número de vitórias fora das opções',
-  }),
+  }).optional(),
+  fechamento: z.int().refine((v) => (FECHAMENTO_OPCOES as readonly number[]).includes(v), {
+    message: 'minutos até fechar fora das opções',
+  }).optional(),
 }).strict();
 
 const empty = z.object({}).strict();
