@@ -22,6 +22,11 @@ import {
   NASCEDOUROS,
   PAREDE,
   PAVIO_PASSOS,
+  ANEL,
+  ARREMESSO_CASAS,
+  FANTASMA_APOS_PASSOS,
+  PROTECAO_AO_VOLTAR,
+  anelEm,
   aplicarEntrada,
   createMatch,
   endMatch,
@@ -334,7 +339,7 @@ describe('itens novos', () => {
     let m = limpa(jogando(nova()), { p0: [1, 1], p1: [13, 11] });
     m = comJogador(m, 'p0', { chute: true });
     m = { ...m, grade: m.grade.map((c, i) => (i === indice(9, 1) ? CAIXA : c)) };
-    m = { ...m, bombas: [{ id: 50, x: 2, y: 1, dono: 'p1', alcance: 1, colocadaNoPasso: m.passo, explodeNoPasso: m.passo + 200, deslize: null }] };
+    m = { ...m, bombas: [{ id: 50, x: 2, y: 1, dono: 'p1', alcance: 1, colocadaNoPasso: m.passo, explodeNoPasso: m.passo + 200, deslize: null, carregadaPor: null, voo: null }] };
     m = aplicarEntrada(m, 'p0', { dir: 'DIREITA', bomba: false });
     m = passo(m);
     expect(m.eventos).toContainEqual({ tipo: 'CHUTE', playerId: 'p0' });
@@ -348,7 +353,7 @@ describe('itens novos', () => {
 
   it('sem chute, a bomba barra o caminho', () => {
     let m = limpa(jogando(nova()), { p0: [1, 1], p1: [13, 11] });
-    m = { ...m, bombas: [{ id: 50, x: 2, y: 1, dono: 'p1', alcance: 1, colocadaNoPasso: m.passo, explodeNoPasso: m.passo + 200, deslize: null }] };
+    m = { ...m, bombas: [{ id: 50, x: 2, y: 1, dono: 'p1', alcance: 1, colocadaNoPasso: m.passo, explodeNoPasso: m.passo + 200, deslize: null, carregadaPor: null, voo: null }] };
     m = aplicarEntrada(m, 'p0', { dir: 'DIREITA', bomba: false });
     m = passos(m, 10);
     expect(m.bombas[0]!.x).toBe(2);
@@ -445,5 +450,189 @@ describe('morte e registro', () => {
     expect(m.abates).toHaveLength(1);
     expect(project(m).abates).toHaveLength(0);
     expect(project({ ...m, fase: 'FIM_DA_RODADA' }).abates).toHaveLength(1);
+  });
+});
+
+describe('movimento responsivo', () => {
+  const humano = { guardarToque: true };
+
+  it('toque rápido de volta, apertado e solto entre dois passos, ainda inverte', () => {
+    const base = limpa(jogando(nova()), { p0: [3, 1], p1: [13, 11] });
+    let m = aplicarEntrada(base, 'p0', { dir: 'DIREITA', bomba: false }, humano);
+    m = passo(m);
+    m = aplicarEntrada(m, 'p0', { dir: null, bomba: false }, humano);
+    const toque = aplicarEntrada(aplicarEntrada(m, 'p0', { dir: 'ESQUERDA', bomba: false }, humano), 'p0', { dir: null, bomba: false }, humano);
+    // Voltou de 1/5 do caminho: já está de novo no centro de (3,1).
+    expect(passo(toque).jogadores[0]).toMatchObject({ x: 3, y: 1, mov: null });
+    // O bot (sem toque guardado) não anda o que não decidiu.
+    const bot = aplicarEntrada(aplicarEntrada(m, 'p0', { dir: 'ESQUERDA', bomba: false }), 'p0', { dir: null, bomba: false });
+    expect(passo(bot).jogadores[0]!.mov?.dir).toBe('DIREITA');
+  });
+
+  it('a curva pedida um pouco antes da esquina é feita nela, mesmo voltando à tecla de antes', () => {
+    let m = limpa(jogando(nova()), { p0: [2, 1], p1: [13, 11] });
+    m = aplicarEntrada(m, 'p0', { dir: 'DIREITA', bomba: false }, humano);
+    m = passos(m, 2);
+    // Toca ↓ e volta para → antes de chegar em (3,1).
+    m = aplicarEntrada(m, 'p0', { dir: 'BAIXO', bomba: false }, humano);
+    m = aplicarEntrada(m, 'p0', { dir: 'DIREITA', bomba: false }, humano);
+    m = passos(m, 4);
+    const j = m.jogadores[0]!;
+    expect(j.x).toBe(3);
+    expect(j.mov?.dir).toBe('BAIXO');
+  });
+
+  it('o toque vence: vencido o prazo, não vira curva nenhuma', () => {
+    let m = limpa(jogando(nova()), { p0: [1, 1], p1: [13, 11] });
+    m = aplicarEntrada(m, 'p0', { dir: 'BAIXO', bomba: false }, humano);
+    m = aplicarEntrada(m, 'p0', { dir: null, bomba: false }, humano);
+    m = passos(m, 30);
+    expect(m.jogadores[0]).toMatchObject({ x: 1, y: 2, mov: null, toque: null });
+  });
+
+  it('o quadro devolve o número da última entrada e o passo em que chegou', () => {
+    let m = limpa(jogando(nova()), { p0: [1, 1], p1: [13, 11] });
+    m = aplicarEntrada(m, 'p0', { dir: 'DIREITA', bomba: false, seq: 7 }, humano);
+    const v = project(passo(m));
+    expect(v.jogadores[0]).toMatchObject({ entradaSeq: 7, entradaPasso: m.passo });
+  });
+});
+
+describe('luva', () => {
+  const comLuva = (m: MatchState, id = 'p0') => comJogador(m, id, { luva: true });
+  const bombaEm = (m: MatchState, x: number, y: number, dono = 'p1', explode = m.passo + 30) => ({
+    ...m,
+    bombas: [...m.bombas, { id: 900 + m.bombas.length, x, y, dono, alcance: 2, colocadaNoPasso: m.passo, explodeNoPasso: explode, deslize: null, carregadaPor: null, voo: null }],
+  });
+
+  it('levanta a bomba da frente, com o pavio parado, e arremessa 2 casas', () => {
+    let m = comLuva(limpa(jogando(nova(3)), { p0: [1, 1], p1: [13, 11], p2: [13, 1] }));
+    m = comJogador(m, 'p0', { olhando: 'DIREITA' });
+    m = bombaEm(m, 2, 1);
+    const pavio = m.bombas[0]!.explodeNoPasso - m.passo;
+    m = aplicarEntrada(m, 'p0', { dir: null, bomba: true });
+    m = passo(m);
+    expect(m.bombas[0]!.carregadaPor).toBe('p0');
+    expect(m.eventos).toContainEqual({ tipo: 'LEVANTOU', playerId: 'p0' });
+    m = passos(m, 100);
+    expect(m.bombas[0]!.explodeNoPasso - m.passo).toBe(pavio);
+    expect(conferirInvariantes(m)).toEqual([]);
+    m = aplicarEntrada(m, 'p0', { dir: null, bomba: true });
+    m = passo(m);
+    expect(m.bombas[0]).toMatchObject({ x: 1 + ARREMESSO_CASAS, y: 1, carregadaPor: null, voo: { dir: 'DIREITA', casas: 2 } });
+    m = passos(m, 4);
+    expect(m.bombas[0]!.voo).toBeNull();
+    expect(conferirInvariantes(m)).toEqual([]);
+  });
+
+  it('caindo em outra bomba, quica para a casa livre seguinte', () => {
+    let m = comLuva(limpa(jogando(nova(3)), { p0: [1, 1], p1: [13, 11], p2: [13, 9] }));
+    m = comJogador(m, 'p0', { olhando: 'DIREITA' });
+    m = bombaEm(m, 2, 1);
+    m = bombaEm(m, 3, 1, 'p2', m.passo + 200);
+    m = passo(aplicarEntrada(m, 'p0', { dir: null, bomba: true }));
+    m = passo(aplicarEntrada(m, 'p0', { dir: null, bomba: true }));
+    expect(m.bombas.find((b) => b.id === 900)).toMatchObject({ x: 4, y: 1 });
+  });
+
+  it('passando da borda, entra pelo outro lado', () => {
+    let m = comLuva(limpa(jogando(nova(3)), { p0: [12, 1], p1: [13, 11], p2: [1, 11] }));
+    m = comJogador(m, 'p0', { olhando: 'DIREITA' });
+    m = bombaEm(m, 13, 1);
+    m = passo(aplicarEntrada(m, 'p0', { dir: null, bomba: true }));
+    m = passo(aplicarEntrada(m, 'p0', { dir: null, bomba: true }));
+    // De (12,1): 2 casas dá (14,1), a parede; quica para (0,1), parede de novo, e cai em (1,1).
+    expect(m.bombas[0]).toMatchObject({ x: 1, y: 1 });
+    m = passos(m, 10);
+    expect(m.bombas[0]!.voo).toBeNull();
+  });
+
+  it('quem morre carregando deixa a bomba cair ali', () => {
+    let m = comLuva(limpa(jogando(nova(3)), { p0: [3, 1], p1: [13, 11], p2: [13, 9] }));
+    m = comJogador(m, 'p0', { olhando: 'DIREITA' });
+    m = bombaEm(m, 4, 1, 'p1', m.passo + 300);
+    m = passo(aplicarEntrada(m, 'p0', { dir: null, bomba: true }));
+    m = { ...m, chamas: [{ x: 3, y: 1, ateOPasso: m.passo + 5, forma: 'CENTRO', ponta: false, donos: ['p2'] }] };
+    m = passo(m);
+    expect(jog(m, 'p0').vivo).toBe(false);
+    const b = m.bombas.find((x) => x.id === 900)!;
+    expect(b.carregadaPor).toBeNull();
+    expect(m.itens.map((i) => i.tipo)).toContain('LUVA');
+    expect(conferirInvariantes(m)).toEqual([]);
+  });
+});
+
+describe('fantasma na borda', () => {
+  /** p0 morto há tempo bastante, já fantasma na casa `anel` da borda. */
+  function comFantasma(lugares: Record<string, [number, number]>, anel: number): MatchState {
+    let m = limpa(jogando(nova(3)), lugares);
+    m = comJogador(m, 'p0', { vivo: false, morreuNoPasso: m.passo - 30, fantasma: { anel, mov: null } });
+    return { ...m, abates: [{ rodada: m.rodada, passo: m.passo - 30, vitima: 'p0', autor: null, ajudantes: [], causa: 'FECHAMENTO', voltou: false }] };
+  }
+
+  it('quem morre vira fantasma na casa da borda mais perto, depois de um instante', () => {
+    let m = limpa(jogando(nova(3)), { p0: [1, 1], p1: [13, 11], p2: [13, 1] });
+    m = passo(aplicarEntrada(m, 'p0', { dir: null, bomba: true }));
+    m = passos(m, PAVIO_PASSOS);
+    expect(jog(m, 'p0').vivo).toBe(false);
+    expect(jog(m, 'p0').fantasma).toBeNull();
+    m = passos(m, FANTASMA_APOS_PASSOS);
+    const f = jog(m, 'p0').fantasma!;
+    expect(anelEm(f.anel)).toEqual([1, 0]);
+  });
+
+  it('anda pela borda com as setas dela e dobra o canto segurando a mesma tecla', () => {
+    let m = comFantasma({ p1: [13, 11], p2: [13, 9] }, 12); // (12,0), perto do canto (14,0)
+    m = aplicarEntrada(m, 'p0', { dir: 'DIREITA', bomba: false });
+    m = passos(m, 20);
+    const [x, y] = anelEm(jog(m, 'p0').fantasma!.anel);
+    expect(x).toBe(14);
+    expect(y).toBeGreaterThan(0);
+    // Na lateral, ← sobe e → desce: dá para jogar só com as duas.
+    const lateral = ANEL.findIndex(([ax, ay]) => ax === 14 && ay === 5);
+    const sobe = passos(aplicarEntrada(comFantasma({ p1: [13, 11], p2: [13, 9] }, lateral), 'p0', { dir: 'ESQUERDA', bomba: false }), 10);
+    expect(anelEm(jog(sobe, 'p0').fantasma!.anel)).toEqual([14, 3]);
+    const desce = passos(aplicarEntrada(comFantasma({ p1: [13, 11], p2: [13, 9] }, lateral), 'p0', { dir: 'DIREITA', bomba: false }), 10);
+    expect(anelEm(jog(desce, 'p0').fantasma!.anel)).toEqual([14, 7]);
+    expect(conferirInvariantes(m)).toEqual([]);
+  });
+
+  it('arremessa para dentro a bomba do começo, uma por vez', () => {
+    let m = comFantasma({ p1: [13, 11], p2: [13, 9] }, 3); // (3,0)
+    m = comJogador(m, 'p0', { alcance: 6, bombas: 4 });
+    m = passo(aplicarEntrada(m, 'p0', { dir: null, bomba: true }));
+    expect(m.bombas).toHaveLength(1);
+    expect(m.bombas[0]).toMatchObject({ dono: 'p0', alcance: ALCANCE_INICIAL, x: 3, y: 2, voo: { dir: 'BAIXO' } });
+    m = passo(aplicarEntrada(m, 'p0', { dir: null, bomba: true }));
+    expect(m.bombas).toHaveLength(1);
+  });
+
+  it('o fantasma cujo fogo mata alguém volta no lugar dele, sem poderes e protegido por um instante', () => {
+    let m = comFantasma({ p1: [3, 3], p2: [13, 9] }, 3);
+    m = passo(aplicarEntrada(m, 'p0', { dir: null, bomba: true }));
+    m = passos(m, PAVIO_PASSOS + 10);
+    expect(jog(m, 'p1').vivo).toBe(false);
+    const p0 = jog(m, 'p0');
+    expect(p0).toMatchObject({ vivo: true, voltou: true, fantasma: null, alcance: ALCANCE_INICIAL, bombas: 1 });
+    expect([p0.x, p0.y]).toEqual([3, 3]);
+    expect(m.abates.find((a) => a.vitima === 'p1')).toMatchObject({ autor: 'p0', voltou: true });
+    expect(m.fase).toBe('JOGANDO');
+    // Nasce dentro do fogo que acabou de acender e não morre por isso.
+    m = passos(m, PROTECAO_AO_VOLTAR);
+    expect(jog(m, 'p0').vivo).toBe(true);
+    expect(conferirInvariantes(m)).toEqual([]);
+  });
+
+  it('fantasma não pega item, não leva fogo e não segura a rodada', () => {
+    let m = comFantasma({ p1: [3, 3], p2: [13, 9] }, 3);
+    m = comItem(m, 1, 1, 'FOGO');
+    m = { ...m, chamas: [{ x: 3, y: 0, ateOPasso: m.passo + 5, forma: 'CENTRO', ponta: false, donos: ['p1'] }] };
+    m = passo(m);
+    expect(m.itens).toHaveLength(1);
+    // Morre p2: sobra um vivo, e a rodada acaba mesmo com o fantasma na borda.
+    m = { ...m, chamas: [{ x: 13, y: 9, ateOPasso: m.passo + 5, forma: 'CENTRO', ponta: false, donos: ['p1'] }] };
+    m = passo(m);
+    expect(m.fase).toBe('FIM_DA_RODADA');
+    expect(m.vencedorDaRodada).toBe('p1');
   });
 });

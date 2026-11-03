@@ -23,10 +23,11 @@ export const CAIXA: Celula = 2;
 
 /**
  * Fogo (alcance), velocidade, bomba (uma a mais por vez), chute (empurra
- * bomba) e caveira — que não é melhoria: é uma maldição que passa adiante.
+ * bomba), luva (carrega e arremessa bomba) e caveira — que não é melhoria: é
+ * uma maldição que passa adiante.
  */
-export type TipoItem = 'FOGO' | 'VELOCIDADE' | 'BOMBA' | 'CHUTE' | 'CAVEIRA';
-export const TIPOS_DE_ITEM: readonly TipoItem[] = ['FOGO', 'VELOCIDADE', 'BOMBA', 'CHUTE', 'CAVEIRA'];
+export type TipoItem = 'FOGO' | 'VELOCIDADE' | 'BOMBA' | 'CHUTE' | 'LUVA' | 'CAVEIRA';
+export const TIPOS_DE_ITEM: readonly TipoItem[] = ['FOGO', 'VELOCIDADE', 'BOMBA', 'CHUTE', 'LUVA', 'CAVEIRA'];
 
 /** O que a caveira faz: inverte o direcional, impede a bomba ou deixa lento. */
 export type Maldicao = 'INVERTIDO' | 'SEM_BOMBA' | 'LENTO';
@@ -47,6 +48,17 @@ export interface Movimento {
   progresso: number;
 }
 
+/**
+ * Quem morreu volta como fantasma na borda da arena: anda pelo `ANEL` (as
+ * casas de parede em volta) e arremessa bomba para dentro.
+ */
+export interface Fantasma {
+  /** Índice no `ANEL` da casa de onde saiu (ou onde está parado). */
+  anel: number;
+  /** +1 é o sentido horário do anel; `segurando` é a tecla que começou o trecho. */
+  mov: { sentido: 1 | -1; progresso: number; segurando: Dir } | null;
+}
+
 export interface JogadorNoJogo {
   id: PlayerId;
   /** A casa de onde saiu (ou onde está parado). */
@@ -56,6 +68,12 @@ export interface JogadorNoJogo {
   olhando: Dir;
   /** Direção segurada agora. `null` = soltou. */
   querDir: Dir | null;
+  /**
+   * A última direção apertada, guardada por alguns passos mesmo depois de
+   * solta: o toque rápido entre dois passos do servidor (ou a curva pedida
+   * antes da esquina) não se perde. Só a entrada de gente usa.
+   */
+  toque: { dir: Dir; ate: number } | null;
   /** Apertou a bomba e o passo ainda não consumiu. */
   querBomba: boolean;
   vivo: boolean;
@@ -67,10 +85,21 @@ export interface JogadorNoJogo {
   bombas: number;
   /** Pegou o chute: andar contra uma bomba a empurra. */
   chute: boolean;
+  /** Pegou a luva: o botão de ação diante de uma bomba a levanta, e de novo a arremessa. */
+  luva: boolean;
   /** A caveira, enquanto dura. */
   maldicao: { tipo: Maldicao; atePasso: number } | null;
   /** Acabou de passar a caveira: não a recebe de volta até este passo. */
   imuneAte: number;
+  /** Morto: a borda por onde anda. `null` vivo, ou nos primeiros instantes da morte. */
+  fantasma: Fantasma | null;
+  /** Voltou da borda nesta rodada (matou alguém como fantasma). */
+  voltou: boolean;
+  /** Fogo não mata até este passo: quem acabou de voltar nasce dentro da explosão. */
+  protegidoAte: number;
+  /** Número da última entrada aplicada, e o passo em que chegou: é com isto que o cliente se acerta com o servidor. */
+  entradaSeq: number;
+  entradaPasso: number;
 }
 
 export interface Bomba {
@@ -83,6 +112,20 @@ export interface Bomba {
   explodeNoPasso: number;
   /** Chutada: escorrega nesta direção até bater em alguma coisa. */
   deslize: Movimento | null;
+  /** Levantada com a luva: viaja com quem a carrega, com o pavio parado. */
+  carregadaPor: PlayerId | null;
+  /** Arremessada: está no ar, a caminho de (x, y), com o pavio parado. */
+  voo: Voo | null;
+}
+
+/** Bomba no ar: saiu de (deX, deY) e anda `casas` casas na direção `dir`, dando a volta na arena se passar da borda. */
+export interface Voo {
+  dir: Dir;
+  deX: number;
+  deY: number;
+  casas: number;
+  /** De 0 a `casas * UNIDADE`. */
+  progresso: number;
 }
 
 /** Eixo é só para o desenho: centro, braço horizontal ou vertical, ponta. */
@@ -106,6 +149,8 @@ export interface Abate {
   /** Outros donos de fogo que estavam na mesma casa: a assistência. */
   ajudantes: PlayerId[];
   causa: 'FOGO' | 'FECHAMENTO';
+  /** O autor era fantasma e, por este abate, voltou para a arena. */
+  voltou: boolean;
 }
 
 export interface Item {
@@ -128,6 +173,9 @@ export type Evento =
   | { tipo: 'MALDICAO'; playerId: PlayerId; maldicao: Maldicao; de: PlayerId | null }
   | { tipo: 'PEGOU'; playerId: PlayerId; item: TipoItem }
   | { tipo: 'BOMBA'; playerId: PlayerId }
+  | { tipo: 'LEVANTOU'; playerId: PlayerId }
+  | { tipo: 'ARREMESSO'; playerId: PlayerId }
+  | { tipo: 'VOLTOU'; playerId: PlayerId }
   | { tipo: 'FECHOU'; x: number; y: number };
 
 export type EndReason = 'VITORIA' | 'ENCERRADA_PELO_HOST';
@@ -169,5 +217,8 @@ export interface MatchState {
 
 export interface Entrada {
   dir: Dir | null;
+  /** O botão de ação: solta bomba, levanta (com a luva) ou arremessa. */
   bomba: boolean;
+  /** Número da entrada, crescente, mandado pelo cliente. */
+  seq?: number;
 }

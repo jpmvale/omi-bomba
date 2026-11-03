@@ -468,7 +468,15 @@ function applyInput(
   if (player.bot !== null) return { ok: true, room, emissions: [] };
   return {
     ok: true,
-    room: { ...room, match: aplicarEntrada(room.match, player.id, { dir: payload.dir, bomba: payload.bomba }) },
+    room: {
+      ...room,
+      match: aplicarEntrada(
+        room.match,
+        player.id,
+        { dir: payload.dir, bomba: payload.bomba, ...(payload.seq !== undefined ? { seq: payload.seq } : {}) },
+        { guardarToque: true },
+      ),
+    },
     emissions: [],
   };
 }

@@ -26,7 +26,7 @@ export interface MatchView {
   jogadores: JogadorVisto[];
   /** Quantos blocos da espiral já caíram: o cliente anima a queda do seguinte. */
   fechadas: number;
-  bombas: Pick<Bomba, 'id' | 'x' | 'y' | 'dono' | 'alcance' | 'explodeNoPasso' | 'deslize'>[];
+  bombas: Pick<Bomba, 'id' | 'x' | 'y' | 'dono' | 'alcance' | 'explodeNoPasso' | 'deslize' | 'carregadaPor' | 'voo'>[];
   chamas: Omit<Chama, 'donos'>[];
   itens: Pick<Item, 'x' | 'y' | 'tipo'>[];
   placar: Record<PlayerId, number>;
@@ -66,10 +66,25 @@ export function project(m: MatchState, comGrade = true): MatchView {
       velocidade: j.velocidade,
       bombas: j.bombas,
       chute: j.chute,
+      luva: j.luva,
       maldicao: j.maldicao,
+      toque: j.toque,
+      fantasma: j.fantasma,
+      voltou: j.voltou,
+      protegidoAte: j.protegidoAte,
+      entradaSeq: j.entradaSeq,
+      entradaPasso: j.entradaPasso,
     })),
     bombas: m.bombas.map((b) => ({
-      id: b.id, x: b.x, y: b.y, dono: b.dono, alcance: b.alcance, explodeNoPasso: b.explodeNoPasso, deslize: b.deslize,
+      id: b.id,
+      x: b.x,
+      y: b.y,
+      dono: b.dono,
+      alcance: b.alcance,
+      explodeNoPasso: b.explodeNoPasso,
+      deslize: b.deslize,
+      carregadaPor: b.carregadaPor,
+      voo: b.voo,
     })),
     chamas: m.chamas.map((c) => ({ x: c.x, y: c.y, ateOPasso: c.ateOPasso, forma: c.forma, ponta: c.ponta })),
     // Item ainda coberto pelo fogo que o revelou não aparece: no desenho ele

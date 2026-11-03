@@ -51,7 +51,7 @@ describe('bot', () => {
   it.each(['FACIL', 'MEDIO', 'DIFICIL'] as const)('%s sai do alcance de uma bomba que vai explodir', (dif) => {
     let m = arena({ a: [5, 1], b: [13, 11] });
     // Bomba de b ao lado do bot, pavio quase no fim.
-    m = { ...m, bombas: [{ id: 99, x: 4, y: 1, dono: 'b', alcance: 3, colocadaNoPasso: m.passo, explodeNoPasso: m.passo + 20, deslize: null }] };
+    m = { ...m, bombas: [{ id: 99, x: 4, y: 1, dono: 'b', alcance: 3, colocadaNoPasso: m.passo, explodeNoPasso: m.passo + 20, deslize: null, carregadaPor: null, voo: null }] };
     // Só decide e anda; nada de bomba própria para não confundir o teste.
     const rng = createRng('fuga');
     for (let i = 0; i < 25; i++) {
@@ -111,6 +111,9 @@ describe('simulação', () => {
     let rodadas = 0;
     let chutes = 0;
     let maldicoes = 0;
+    let levantadas = 0;
+    let arremessos = 0;
+    let voltas = 0;
     for (let s = 0; s < 16; s++) {
       const n = 2 + (s % 4);
       const ids = Array.from({ length: n }, (_, i) => `p${i}`);
@@ -127,7 +130,7 @@ describe('simulação', () => {
         if (m.rodada !== rodada) {
           rodada = m.rodada;
           inicio = m.passo;
-          if (afobado) m = { ...m, jogadores: m.jogadores.map((j) => ({ ...j, chute: true })) };
+          if (afobado) m = { ...m, jogadores: m.jogadores.map((j) => ({ ...j, chute: true, luva: j.id === 'p0' })) };
         }
         for (const [i, id] of ids.entries()) {
           const entrada = afobado && i === 0
@@ -139,6 +142,9 @@ describe('simulação', () => {
         for (const e of m.eventos) {
           if (e.tipo === 'CHUTE') chutes++;
           if (e.tipo === 'MALDICAO') maldicoes++;
+          if (e.tipo === 'LEVANTOU') levantadas++;
+          if (e.tipo === 'ARREMESSO') arremessos++;
+          if (e.tipo === 'VOLTOU') voltas++;
         }
         const erros = conferirInvariantes(m);
         if (erros.length > 0) throw new Error(`semente ${s}, passo ${m.passo}: ${erros.join('; ')}`);
@@ -151,6 +157,9 @@ describe('simulação', () => {
     // O teste só vale se os caminhos novos rodaram de verdade.
     expect(chutes).toBeGreaterThan(0);
     expect(maldicoes).toBeGreaterThan(0);
+    expect(levantadas).toBeGreaterThan(0);
+    expect(arremessos).toBeGreaterThan(0);
+    expect(voltas).toBeGreaterThan(0);
   }, 120_000);
 
   it('o bot difícil não fica tremendo no lugar (ida e volta a cada passo)', () => {

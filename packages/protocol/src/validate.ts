@@ -113,6 +113,7 @@ export const commandSchema = z.discriminatedUnion('type', [
       matchId: z.string().min(1).max(64),
       dir: z.enum(['CIMA', 'BAIXO', 'ESQUERDA', 'DIREITA']).nullable(),
       bomba: z.boolean(),
+      seq: z.int().min(0).max(2 ** 31 - 1).optional(),
     }).strict(),
   }),
 ]);

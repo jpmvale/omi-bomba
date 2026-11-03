@@ -132,7 +132,11 @@ export type Command =
    * a cada quadro. Sem `ack` e fora da idempotência: perder um é recuperado
    * pelo próximo, e um `ack` por tecla dobraria o tráfego à toa.
    */
-  | { type: 'game:input'; payload: { matchId: string; dir: Dir | null; bomba: boolean } };
+  | {
+      type: 'game:input';
+      /** `seq` cresce a cada entrada: o quadro devolve a última aplicada e o cliente se acerta por ela. */
+      payload: { matchId: string; dir: Dir | null; bomba: boolean; seq?: number | undefined };
+    };
 
 export type CommandType = Command['type'];
 
