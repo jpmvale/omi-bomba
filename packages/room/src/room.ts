@@ -411,7 +411,13 @@ export function applyCommand(room: Room, playerId: PlayerId, command: Command, c
 
     case 'host:setOptions': {
       if (room.status !== 'LOBBY') return failWith('WRONG_STATUS', 'SO_NO_LOBBY');
-      return commit({ ...room, options: command.payload.options }, ctx, []);
+      // Junta com o que já estava: o anfitrião manda só o campo que mudou.
+      const pedido = command.payload.options;
+      const options = {
+        vitorias: pedido.vitorias ?? room.options.vitorias,
+        fechamento: pedido.fechamento ?? room.options.fechamento,
+      };
+      return commit({ ...room, options }, ctx, []);
     }
 
     case 'host:startMatch':

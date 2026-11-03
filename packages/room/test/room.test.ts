@@ -181,3 +181,22 @@ describe('queda, volta e saída', () => {
     expect(room.hostId).not.toBeNull();
   });
 });
+
+describe('sala gravada por versão anterior', () => {
+  it('ganha os campos novos e a partida segue sem quebrar', async () => {
+    const { migrarSala } = await import('../src/index.js');
+    const { conferirInvariantes } = await import('@omi-bomba/rules');
+    const room = comPartida(2);
+    // Simula o formato antigo: sem fechamento, sem abates, sem os campos dos itens novos.
+    const velha = JSON.parse(JSON.stringify(room));
+    delete velha.options.fechamento;
+    delete velha.match.options.fechamento;
+    delete velha.match.abates;
+    for (const j of velha.match.jogadores) { delete j.bombas; delete j.chute; delete j.maldicao; delete j.imuneAte; }
+    const nova = migrarSala(velha);
+    expect(nova.options.fechamento).toBe(1);
+    const { room: depois } = correr(nova, 1_000, 1_000 + 200 * TICK_MS);
+    expect(depois.match!.passo).toBeGreaterThan(room.match!.passo);
+    expect(conferirInvariantes(depois.match!)).toEqual([]);
+  });
+});

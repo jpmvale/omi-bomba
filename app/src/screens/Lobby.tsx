@@ -8,7 +8,7 @@ import {
   type PublicPlayer,
   type RoomView,
 } from '@omi-bomba/protocol';
-import { VITORIAS_OPCOES } from '@omi-bomba/rules';
+import { FECHAMENTO_OPCOES, VITORIAS_OPCOES } from '@omi-bomba/rules';
 import { Chat } from '../components/Chat';
 import { EscolhaDePersonagem } from '../components/EscolhaDePersonagem';
 import { Retrato } from '../components/Retrato';
@@ -157,6 +157,23 @@ export function Lobby({
           </div>
         </div>
         <span className="fraco">{sala.options.vitorias === 1 ? 'Uma rodada só.' : `Primeiro a vencer ${sala.options.vitorias} rodadas.`}</span>
+        <div className="linha" style={{ justifyContent: 'space-between' }}>
+          <span>Arena fecha após</span>
+          <div className="segmentado">
+            {FECHAMENTO_OPCOES.map((min) => (
+              <button
+                key={min}
+                aria-pressed={sala.options.fechamento === min}
+                disabled={!souHost}
+                onClick={() => enviar('host:setOptions', { options: { fechamento: min } })}
+                style={{ minWidth: 52 }}
+              >
+                {min} min
+              </button>
+            ))}
+          </div>
+        </div>
+        <span className="fraco">Depois disso caem blocos do céu, do canto para o centro. Quem estiver embaixo é esmagado.</span>
       </section>
 
       {euJogador && !euJogador.isSpectator ? (

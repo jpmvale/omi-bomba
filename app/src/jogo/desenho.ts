@@ -12,12 +12,14 @@ import {
   ALTURA,
   DELTA,
   ESPIRAL,
+  FECHAMENTO_INTERVALO_PASSOS,
   fechadasEm,
   LARGURA,
   TICK_MS,
   UNIDADE,
   type JogadorVisto,
   type MatchView,
+  type TipoItem,
 } from '@omi-bomba/rules';
 import type { Quadro } from './arena';
 import { desenharPersonagem } from './personagens';
@@ -40,8 +42,14 @@ const COR = {
   fogoDentro: '#fff2b0',
   itemFogo: '#ff6a00',
   itemVelocidade: '#3fa9f5',
+  itemChute: '#c0392b',
   itemFundo: '#f3eee2',
+  caveiraFundo: '#3a2346',
+  caveira: '#ece6f5',
 };
+
+/** Quantos passos o bloco leva caindo do céu até a casa. */
+const QUEDA_PASSOS = 12;
 
 export interface Medidas {
   casa: number;
@@ -115,10 +123,18 @@ export function desenharArena(
   // Itens
   for (const it of v.itens) desenharItem(ctx, it.x * casa, it.y * casa, casa, it.tipo, agora);
 
-  // Bombas: incham conforme o pavio acaba.
+  // Bombas: incham conforme o pavio acaba. A chutada desliza entre os quadros.
+  const bombasAntes = new Map(anterior && anterior.view.matchId === v.matchId ? anterior.view.bombas.map((b) => [b.id, b]) : []);
   for (const b of v.bombas) {
     const falta = Math.max(0, b.explodeNoPasso - passoAgora);
-    desenharBomba(ctx, b.x * casa + casa / 2, b.y * casa + casa / 2, casa, falta, agora);
+    let [bx, by] = posicaoDaBomba(b);
+    const ja = bombasAntes.get(b.id);
+    if (ja && (ja.deslize || b.deslize)) {
+      const [ax, ay] = posicaoDaBomba(ja);
+      bx = ax + (bx - ax) * alpha;
+      by = ay + (by - ay) * alpha;
+    }
+    desenharBomba(ctx, bx * casa + casa / 2, by * casa + casa / 2, casa, falta, agora);
   }
 
   // Fogo
@@ -154,7 +170,53 @@ export function desenharArena(
     }
     const anda = j.mov ? (j.mov.progresso / UNIDADE) : 0;
     desenharPersonagem(ctx, p, cx, cy, casa, j.olhando, anda, agora);
+    // Com a caveira: ela pisca em cima da cabeça.
+    if (j.maldicao && Math.floor(agora / 180) % 2 === 0) {
+      desenharCaveira(ctx, cx, cy - casa * 0.62, casa * 0.42);
+    }
   }
+
+  // Os blocos do fechamento caem do céu: a espiral é geometria fixa e o passo
+  // de cada um é conhecido, então a queda é calculada aqui, sem vir no quadro.
+  if (v.fase === 'JOGANDO' && passoAgora >= v.fechaNoPasso - QUEDA_PASSOS) {
+    const primeiro = Math.max(0, Math.floor((passoAgora - v.fechaNoPasso) / FECHAMENTO_INTERVALO_PASSOS));
+    for (let k = primeiro; k < Math.min(ESPIRAL.length, primeiro + 3); k++) {
+      const cai = v.fechaNoPasso + k * FECHAMENTO_INTERVALO_PASSOS;
+      const falta = cai - passoAgora;
+      if (falta < 0 || falta > QUEDA_PASSOS) continue;
+      const i = ESPIRAL[k]!;
+      const px = (i % LARGURA) * casa;
+      const py = Math.floor(i / LARGURA) * casa;
+      const f = falta / QUEDA_PASSOS; // 1 = lá em cima, 0 = chegou
+      // A sombra cresce na casa enquanto o bloco desce.
+      ctx.fillStyle = `rgba(0,0,0,${0.45 * (1 - f)})`;
+      ctx.beginPath();
+      ctx.ellipse(px + casa / 2, py + casa / 2, casa * 0.5 * (1 - f * 0.6), casa * 0.32 * (1 - f * 0.6), 0, 0, Math.PI * 2);
+      ctx.fill();
+      desenharBloco(ctx, px, py - f * f * casa * 5, casa, COR.fechou, COR.fechouTopo);
+    }
+  }
+}
+
+function posicaoDaBomba(b: MatchView['bombas'][number]): [number, number] {
+  if (!b.deslize) return [b.x, b.y];
+  const [dx, dy] = DELTA[b.deslize.dir];
+  const f = b.deslize.progresso / UNIDADE;
+  return [b.x + dx * f, b.y + dy * f];
+}
+
+function desenharCaveira(ctx: CanvasRenderingContext2D, cx: number, cy: number, t: number): void {
+  ctx.fillStyle = COR.caveira;
+  ctx.beginPath();
+  ctx.arc(cx, cy - t * 0.08, t * 0.36, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(cx - t * 0.2, cy + t * 0.12, t * 0.4, t * 0.2);
+  ctx.fillStyle = COR.caveiraFundo;
+  ctx.beginPath();
+  ctx.arc(cx - t * 0.13, cy - t * 0.06, t * 0.09, 0, Math.PI * 2);
+  ctx.arc(cx + t * 0.13, cy - t * 0.06, t * 0.09, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(cx - t * 0.02, cy + t * 0.1, t * 0.04, t * 0.12);
 }
 
 function desenharBloco(ctx: CanvasRenderingContext2D, px: number, py: number, t: number, cor: string, topo: string): void {
@@ -227,10 +289,10 @@ function desenharChama(ctx: CanvasRenderingContext2D, px: number, py: number, t:
   }
 }
 
-function desenharItem(ctx: CanvasRenderingContext2D, px: number, py: number, t: number, tipo: 'FOGO' | 'VELOCIDADE', agora: number): void {
+function desenharItem(ctx: CanvasRenderingContext2D, px: number, py: number, t: number, tipo: TipoItem, agora: number): void {
   const m = t * 0.14;
   const flutua = Math.sin(agora / 250) * t * 0.03;
-  ctx.fillStyle = COR.itemFundo;
+  ctx.fillStyle = tipo === 'CAVEIRA' ? COR.caveiraFundo : COR.itemFundo;
   arredondado(ctx, px + m, py + m + flutua, t - 2 * m, t - 2 * m, t * 0.18);
   ctx.fill();
   const cx = px + t / 2;
@@ -248,6 +310,30 @@ function desenharItem(ctx: CanvasRenderingContext2D, px: number, py: number, t: 
     ctx.beginPath();
     ctx.arc(cx, cy + t * 0.08, t * 0.08, 0, Math.PI * 2);
     ctx.fill();
+  } else if (tipo === 'BOMBA') {
+    // Uma bomba pequena.
+    ctx.fillStyle = COR.bomba;
+    ctx.beginPath();
+    ctx.arc(cx - t * 0.02, cy + t * 0.04, t * 0.19, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COR.bombaBrilho;
+    ctx.beginPath();
+    ctx.arc(cx - t * 0.09, cy - t * 0.03, t * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COR.fogoMeio;
+    ctx.beginPath();
+    ctx.arc(cx + t * 0.16, cy - t * 0.2, t * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (tipo === 'CHUTE') {
+    // Uma bota.
+    ctx.fillStyle = COR.itemChute;
+    ctx.fillRect(cx - t * 0.14, cy - t * 0.22, t * 0.16, t * 0.3);
+    arredondado(ctx, cx - t * 0.14, cy + t * 0.02, t * 0.34, t * 0.16, t * 0.07);
+    ctx.fill();
+    ctx.fillStyle = '#7a1f16';
+    ctx.fillRect(cx - t * 0.16, cy + t * 0.15, t * 0.38, t * 0.05);
+  } else if (tipo === 'CAVEIRA') {
+    desenharCaveira(ctx, cx, cy, t * 0.62);
   } else {
     // Duas setas para a frente.
     ctx.strokeStyle = COR.itemVelocidade;

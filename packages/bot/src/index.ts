@@ -30,6 +30,7 @@ import {
   DELTA,
   DIRECOES,
   LARGURA,
+  OPOSTA,
   PAREDE,
   PAVIO_PASSOS,
   UNIDADE,
@@ -92,11 +93,51 @@ export function decidirEntrada(
 
   const bombas = visao.bombas.filter((b) => b.dono === eu || visao.passo - b.colocadaNoPasso >= perfil.reacao);
   const perigo = mapaDePerigo(visao, bombas);
+  const porCasa = Math.ceil(UNIDADE / velocidadeDe(mim));
 
   // Planeja a partir da casa para onde está indo: é onde vai estar parado.
   const [ox, oy] = destino(mim);
   const atraso = mim.mov ? Math.ceil((UNIDADE - mim.mov.progresso) / velocidadeDe(mim)) : 0;
-  const porCasa = Math.ceil(UNIDADE / velocidadeDe(mim));
+  const plano = planejar(visao, mim, ox, oy, atraso, porCasa, perfil, bombas, perigo, rng);
+
+  // O plano manda voltar para a casa de onde saiu? Só volta se o plano feito
+  // DE LÁ concordar. Sem isto o bot no meio do caminho entre A e B planejava a
+  // partir de B ("volta para A"), invertia, planejava a partir de A ("vai para
+  // B"), invertia de novo — e ficava tremendo no lugar até alguém chegar perto
+  // e mudar a conta.
+  let escolha = plano;
+  if (mim.mov && plano.dir === OPOSTA[mim.mov.dir]) {
+    const atrasoDeVolta = Math.ceil(mim.mov.progresso / velocidadeDe(mim));
+    const deLa = planejar(visao, mim, mim.x, mim.y, atrasoDeVolta, porCasa, perfil, bombas, perigo, rng);
+    if (deLa.dir === mim.mov.dir) escolha = { dir: mim.mov.dir, bomba: false };
+  }
+  // Com o direcional invertido pela caveira, o médio e o difícil apertam ao
+  // contrário para ir aonde querem; o fácil se atrapalha como gente.
+  if (escolha.dir !== null && mim.maldicao?.tipo === 'INVERTIDO' && dificuldade !== 'FACIL') {
+    escolha = { ...escolha, dir: OPOSTA[escolha.dir] };
+  }
+  return escolha;
+}
+
+/** Tem bomba sobrando, e a caveira não o impede de soltar. */
+function podeSoltar(v: VisaoDoBot, mim: JogadorNoJogo): boolean {
+  if (mim.maldicao?.tipo === 'SEM_BOMBA') return false;
+  return v.bombas.filter((b) => b.dono === mim.id).length < mim.bombas;
+}
+
+function planejar(
+  visao: VisaoDoBot,
+  mim: JogadorNoJogo,
+  ox: number,
+  oy: number,
+  atraso: number,
+  porCasa: number,
+  perfil: Perfil,
+  bombas: readonly Bomba[],
+  perigo: readonly number[],
+  rng: Rng,
+): Entrada {
+  const eu = mim.id;
   const origem = indice(ox, oy);
 
   // 1. Em perigo: fugir.
@@ -106,8 +147,7 @@ export function decidirEntrada(
   }
 
   // 2. Parado num bom lugar: bomba, se dá para fugir dela.
-  const tenhoBomba = visao.bombas.some((b) => b.dono === eu);
-  if (!mim.mov && !tenhoBomba) {
+  if (!mim.mov && podeSoltar(visao, mim)) {
     const fuga = fugaDaBomba(visao, mim, ox, oy, perfil, bombas, porCasa);
     if (fuga !== null) return { dir: fuga[0]!, bomba: true };
   }
@@ -120,6 +160,11 @@ export function decidirEntrada(
 
   const rota = rotaAoAlvo(visao, perigo, mim, ox, oy, perfil, bombas, porCasa);
   if (rota !== null && rota.length > 0) return { dir: primeiroPasso(mim, rota), bomba: false };
+  // Rota vazia = a casa de destino JÁ é o alvo: solta a direção e para nela.
+  // Antes caía no passeio ao acaso logo abaixo, e o bot que chegava andando ao
+  // lugar da bomba (onde só se solta bomba parado) dava meia-volta, passava do
+  // ponto e voltava — o tremor sem sair do lugar do modo difícil.
+  if (rota !== null) return NADA;
 
   // Sem alvo: dar uma volta de vez em quando. Dois bots iguais sem nada a fazer
   // ficariam parados um diante do outro até o fim do tempo — o acaso desempata.
@@ -173,7 +218,9 @@ function alcanceDa(v: VisaoDoBot, b: Bomba, bombas: readonly Bomba[]): number[] 
  * conhecida a alcança). A cadeia entra: bomba atingida por outra explode junto
  * com a primeira, e não no próprio pavio.
  */
-function mapaDePerigo(v: VisaoDoBot, bombas: readonly Bomba[]): number[] {
+function mapaDePerigo(v: VisaoDoBot, conhecidas: readonly Bomba[]): number[] {
+  // Bomba chutada é perigo onde ela vai PARAR, não onde está agora.
+  const bombas = conhecidas.map((b) => (b.deslize ? ondePara(v, b, conhecidas) : b));
   const quando = new Map<Bomba, number>(bombas.map((b) => [b, b.explodeNoPasso]));
   const alcances = new Map<Bomba, number[]>(bombas.map((b) => [b, alcanceDa(v, b, bombas)]));
 
@@ -206,6 +253,21 @@ function mapaDePerigo(v: VisaoDoBot, bombas: readonly Bomba[]): number[] {
     perigo[i] = Math.min(perigo[i]!, quando);
   }
   return perigo;
+}
+
+/** Onde uma bomba escorregando vai parar: na casa antes do primeiro obstáculo. */
+function ondePara(v: VisaoDoBot, b: Bomba, bombas: readonly Bomba[]): Bomba {
+  const [dx, dy] = DELTA[b.deslize!.dir];
+  let x = b.x;
+  let y = b.y;
+  const ocupada = (cx: number, cy: number): boolean =>
+    v.itens.some((i) => i.x === cx && i.y === cy) ||
+    v.jogadores.some((j) => j.vivo && destino(j)[0] === cx && destino(j)[1] === cy);
+  while (andavel(v, x + dx, y + dy, bombas) && !ocupada(x + dx, y + dy)) {
+    x += dx;
+    y += dy;
+  }
+  return { ...b, x, y };
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +329,7 @@ function rotaSegura(
 
 /** Uma bomba aqui acerta alguma coisa que valha? */
 function valeBomba(v: VisaoDoBot, mim: JogadorNoJogo, x: number, y: number, perfil: Perfil): boolean {
-  const casas = alcanceDa(v, { id: -1, x, y, dono: mim.id, alcance: mim.alcance, colocadaNoPasso: 0, explodeNoPasso: 0 }, v.bombas);
+  const casas = alcanceDa(v, { id: -1, x, y, dono: mim.id, alcance: mim.alcance, colocadaNoPasso: 0, explodeNoPasso: 0, deslize: null }, v.bombas);
   if (casas.some((i) => v.grade[i] === CAIXA)) return true;
   if (!perfil.caca) return false;
   return v.jogadores.some((j) => {
@@ -294,7 +356,7 @@ function fugaDaBomba(
   if (!valeBomba(v, mim, x, y, perfil)) return null;
   const hipotese: Bomba = {
     id: -1, x, y, dono: mim.id, alcance: mim.alcance,
-    colocadaNoPasso: v.passo, explodeNoPasso: v.passo + PAVIO_PASSOS,
+    colocadaNoPasso: v.passo, explodeNoPasso: v.passo + PAVIO_PASSOS, deslize: null,
   };
   const comBomba = [...bombas, hipotese];
   const fuga = rotaSegura(v, mapaDePerigo(v, comBomba), x, y, 1, porCasa, perfil.folga, comBomba);
@@ -312,8 +374,11 @@ function rotaAoAlvo(
   bombas: readonly Bomba[],
   porCasa: number,
 ): Dir[] | null {
-  const itens = new Set(v.itens.filter((i) => i.visivelNoPasso <= v.passo).map((i) => indice(i.x, i.y)));
-  const tenhoBomba = v.bombas.some((b) => b.dono === mim.id);
+  // A caveira não é alvo: é casa a evitar no caminho.
+  const visiveis = v.itens.filter((i) => i.visivelNoPasso <= v.passo);
+  const itens = new Set(visiveis.filter((i) => i.tipo !== 'CAVEIRA').map((i) => indice(i.x, i.y)));
+  const caveiras = new Set(visiveis.filter((i) => i.tipo === 'CAVEIRA').map((i) => indice(i.x, i.y)));
+  const tenhoBomba = !podeSoltar(v, mim);
 
   const visto = new Set<number>([indice(ox, oy)]);
   const fila: No[] = [{ x: ox, y: oy, dist: 0, primeiro: [] }];
@@ -336,7 +401,7 @@ function rotaAoAlvo(
       const x = no.x + dx;
       const y = no.y + dy;
       const j = indice(x, y);
-      if (visto.has(j) || !andavel(v, x, y) || perigo[j]! !== NUNCA) continue;
+      if (visto.has(j) || !andavel(v, x, y) || perigo[j]! !== NUNCA || caveiras.has(j)) continue;
       visto.add(j);
       fila.push({ x, y, dist: no.dist + 1, primeiro: no.primeiro.length === 0 ? [d] : no.primeiro });
     }

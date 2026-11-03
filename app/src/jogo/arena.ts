@@ -26,7 +26,10 @@ let doPlacar: MatchView | null = null;
 
 /** O que, mudando, pede para o placar se redesenhar. */
 function resumo(v: MatchView): string {
-  const vivos = v.jogadores.map((j) => (j.vivo ? '1' : '0')).join('');
+  // Vivo e poderes de cada um (o placar mostra), e quantos abates já houve.
+  const vivos = v.jogadores
+    .map((j) => `${j.vivo ? 1 : 0}${j.alcance}${j.bombas}${j.velocidade}${j.chute ? 1 : 0}${j.maldicao ? 1 : 0}`)
+    .join(',') + `|${v.abates.length}`;
   const segundos = Math.ceil((v.faseAtePasso - v.passo) / 20);
   return `${v.matchId}|${v.rodada}|${v.fase}|${vivos}|${JSON.stringify(v.placar)}|${segundos}|${v.endReason ?? ''}`;
 }

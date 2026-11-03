@@ -24,12 +24,18 @@ export const VELOCIDADE_MAX_NIVEL = 4;
 export const ALCANCE_INICIAL = 2;
 export const ALCANCE_MAX = 8;
 
-/**
- * Uma bomba por vez, fixo. O pedido da primeira versão foi melhorar só o fogo
- * e a velocidade; mais bombas é o próximo item natural da lista, e mudar aqui
- * é tudo que o motor precisa.
- */
-export const BOMBAS_POR_JOGADOR = 1;
+/** Começa com uma bomba por vez; cada item de bomba soma uma, até 8. */
+export const BOMBAS_INICIAIS = 1;
+export const BOMBAS_MAX = 8;
+
+/** Bomba chutada anda 1 casa a cada 3 passos — mais rápido que qualquer pessoa. */
+export const DESLIZE_POR_PASSO = 334;
+
+/** A caveira dura 15 s, e lento é bem abaixo da velocidade normal. */
+export const MALDICAO_PASSOS = 15 * 20;
+export const VELOCIDADE_LENTA = 110;
+/** Quem passou a caveira não a recebe de volta por 2 s (senão ela pingaria entre os dois). */
+export const IMUNE_APOS_PASSAR = 2 * 20;
 
 /** 2,5 s de pavio, meio segundo de fogo. */
 export const PAVIO_PASSOS = 50;
@@ -37,23 +43,25 @@ export const FOGO_PASSOS = 10;
 
 export const CONTAGEM_PASSOS = 3 * PASSOS_POR_SEGUNDO;
 export const FIM_DA_RODADA_PASSOS = 4 * PASSOS_POR_SEGUNDO;
-/** Três minutos por rodada. Sobrou mais de um vivo: empate. */
-export const RODADA_PASSOS = 180 * PASSOS_POR_SEGUNDO;
-
 /**
- * Depois de 90 s a arena começa a fechar, uma casa a cada 0,4 s. As ~100 casas
- * livres somem em uns 40 s — a rodada acaba bem antes dos três minutos, que
- * ficam só como teto.
+ * Depois de 1, 3 ou 5 minutos (o anfitrião escolhe) a arena começa a fechar,
+ * um bloco caindo a cada 0,4 s, da casa (1,1) em espiral pelas bordas até o
+ * centro. As 113 casas somem em ~45 s; a rodada acaba no máximo quando a
+ * última cai (todos os que sobraram morrem: empate).
  */
-export const FECHAMENTO_APOS_PASSOS = 90 * PASSOS_POR_SEGUNDO;
+export const FECHAMENTO_OPCOES = [1, 3, 5] as const;
 export const FECHAMENTO_INTERVALO_PASSOS = 8;
+export const fechamentoEmPassos = (minutos: number): number => minutos * 60 * PASSOS_POR_SEGUNDO;
 
 /** Fração das casas livres que nasce com caixa, e das caixas que esconde item. */
 export const DENSIDADE_DE_CAIXAS = 0.7;
-export const CHANCE_DE_ITEM = 0.3;
+export const CHANCE_DE_ITEM = 0.35;
+
+/** Peso de cada item no sorteio das caixas. O chute é o mais raro. */
+export const PESO_DOS_ITENS = { FOGO: 30, BOMBA: 28, VELOCIDADE: 22, CAVEIRA: 12, CHUTE: 8 } as const;
 
 export const MIN_JOGADORES = 2;
 export const MAX_JOGADORES = 5;
 
 export const VITORIAS_OPCOES = [1, 2, 3, 5] as const;
-export const DEFAULT_OPTIONS = { vitorias: 3 };
+export const DEFAULT_OPTIONS = { vitorias: 3, fechamento: 1 };

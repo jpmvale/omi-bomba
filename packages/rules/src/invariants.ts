@@ -4,7 +4,7 @@
  * que só aparece na rodada 40 de uma combinação rara aparece aqui.
  */
 
-import { ALCANCE_MAX, ALTURA, BOMBAS_POR_JOGADOR, LARGURA, UNIDADE, VELOCIDADE_MAX_NIVEL } from './constantes.js';
+import { ALCANCE_MAX, ALTURA, BOMBAS_MAX, LARGURA, UNIDADE, VELOCIDADE_MAX_NIVEL } from './constantes.js';
 import { DELTA, indice } from './mapa.js';
 import { CHAO, type MatchState } from './types.js';
 
@@ -24,7 +24,10 @@ export function conferirInvariantes(m: MatchState): string[] {
     if (j.velocidade < 0 || j.velocidade > VELOCIDADE_MAX_NIVEL) erros.push(`${j.id} com velocidade ${j.velocidade}`);
     if (!j.vivo && j.mov) erros.push(`${j.id} morto e andando`);
     const minhas = m.bombas.filter((b) => b.dono === j.id).length;
-    if (minhas > BOMBAS_POR_JOGADOR) erros.push(`${j.id} com ${minhas} bombas`);
+    if (j.bombas < 1 || j.bombas > BOMBAS_MAX) erros.push(`${j.id} com capacidade ${j.bombas}`);
+    // Quem morre devolve a capacidade, mas as bombas que já armou ainda explodem.
+    if (j.vivo && minhas > j.bombas) erros.push(`${j.id} com ${minhas} bombas armadas e capacidade ${j.bombas}`);
+    if (!j.vivo && (j.maldicao || j.chute)) erros.push(`${j.id} morto ainda com item`);
   }
 
   const casas = new Set<number>();
@@ -33,6 +36,7 @@ export function conferirInvariantes(m: MatchState): string[] {
     if (casas.has(i)) erros.push(`duas bombas em ${b.x},${b.y}`);
     casas.add(i);
     if (m.grade[i] !== CHAO) erros.push(`bomba dentro de bloco em ${b.x},${b.y}`);
+    if (b.deslize && (b.deslize.progresso < 0 || b.deslize.progresso >= UNIDADE)) erros.push(`bomba ${b.id} com deslize ${b.deslize.progresso}`);
   }
   for (const it of m.itens) {
     if (m.grade[indice(it.x, it.y)] !== CHAO) erros.push(`item dentro de bloco em ${it.x},${it.y}`);
@@ -40,6 +44,15 @@ export function conferirInvariantes(m: MatchState): string[] {
   for (const i of Object.keys(m.ocultos)) {
     if (m.grade[Number(i)] !== 2) erros.push(`item oculto fora de caixa na célula ${i}`);
   }
+  const itensVistos = new Set<number>();
+  for (const it of m.itens) {
+    const i = indice(it.x, it.y);
+    if (itensVistos.has(i)) erros.push(`dois itens em ${it.x},${it.y}`);
+    itensVistos.add(i);
+  }
+  const mortos = m.jogadores.filter((j) => !j.vivo).length;
+  const abatesDaRodada = m.abates.filter((a) => a.rodada === m.rodada).length;
+  if (abatesDaRodada !== mortos) erros.push(`${mortos} mortos e ${abatesDaRodada} abates na rodada`);
   const placarTotal = Object.values(m.placar).reduce((a, b) => a + b, 0);
   if (placarTotal > m.rodada) erros.push('mais vitórias que rodadas');
   return erros;

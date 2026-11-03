@@ -3,7 +3,7 @@
  * sorteadas no resto — menos onde cada um nasce.
  */
 
-import { ALTURA, CHANCE_DE_ITEM, DENSIDADE_DE_CAIXAS, LARGURA } from './constantes.js';
+import { ALTURA, CHANCE_DE_ITEM, DENSIDADE_DE_CAIXAS, LARGURA, PESO_DOS_ITENS } from './constantes.js';
 import type { Rng } from './rng.js';
 import { CAIXA, CHAO, PAREDE, type Celula, type Dir, type TipoItem } from './types.js';
 
@@ -82,9 +82,21 @@ export function gerarArena(rng: Rng): ArenaGerada {
       }
       grade.push(CAIXA);
       if (rng.nextInt(escala) < CHANCE_DE_ITEM * escala) {
-        ocultos[i] = rng.nextInt(2) === 0 ? 'FOGO' : 'VELOCIDADE';
+        ocultos[i] = sortearItem(rng);
       }
     }
   }
   return { grade, ocultos };
+}
+
+const TOTAL_DOS_PESOS = Object.values(PESO_DOS_ITENS).reduce((a, b) => a + b, 0);
+
+/** Um item pelo peso de cada um (`PESO_DOS_ITENS`). */
+export function sortearItem(rng: Rng): TipoItem {
+  let n = rng.nextInt(TOTAL_DOS_PESOS);
+  for (const [tipo, peso] of Object.entries(PESO_DOS_ITENS) as [TipoItem, number][]) {
+    if (n < peso) return tipo;
+    n -= peso;
+  }
+  return 'FOGO';
 }
