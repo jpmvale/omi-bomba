@@ -1,0 +1,14 @@
+{
+  "name": "OmiBomba",
+  "short_name": "OmiBomba",
+  "description": "Bombas, caixas e amigos no navegador. Salas de até 5 pessoas.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080b14",
+  "theme_color": "#080b14",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icone.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

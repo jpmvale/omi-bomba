@@ -1,0 +1,9 @@
+{
+  "name": "@omi-bomba/room",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": { "@omi-bomba/protocol": "*", "@omi-bomba/rules": "*", "@omi-bomba/bot": "*", "@omi-bomba/store": "*" }
+}

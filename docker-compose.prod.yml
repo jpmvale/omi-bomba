@@ -1,0 +1,33 @@
+# Overlay de produção na VPS (guia de projeto novo, §6.2):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# - `omi-bomba-api` serve o cliente e a API no mesmo processo, na rede `edge`
+#   para o Caddy compartilhado alcançar. Não publica porta no host (C5).
+# - O Redis é só deste app e fica na rede do projeto (C6): um FLUSHALL de outro
+#   app não pode derrubar partida aqui.
+#
+# `!override` e NÃO lista vazia: o Compose CONCATENA `ports` entre arquivos.
+# O `deploy.sh` da VPS sobe só o serviço `api` (`up -d --no-deps api`):
+# recriar o Redis a cada deploy derrubaria as salas vivas à toa.
+
+services:
+  redis:
+    container_name: omi-bomba-redis
+    ports: !override []
+    networks: [default]
+
+  api:
+    container_name: omi-bomba-api
+    ports: !override []
+    environment:
+      NODE_ENV: production
+      OMI_BOMBA_SESSION_SECRET: ${OMI_BOMBA_SESSION_SECRET:?defina OMI_BOMBA_SESSION_SECRET no .env}
+      ALLOWED_ORIGIN: https://omi-bomba.imp-software.cloud
+      TRUST_PROXY: "1"
+      OMI_BOMBA_VERSION: ${IMAGE_TAG:-dev}
+    networks: [default, edge]
+
+networks:
+  edge:
+    external: true

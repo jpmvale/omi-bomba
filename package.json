@@ -1,0 +1,43 @@
+{
+  "name": "omi-bomba",
+  "private": true,
+  "type": "module",
+  "description": "OmiBomba: jogo de bombas em grade no navegador, com salas de até 5 pessoas, link de convite e bots.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --pretty",
+    "dev": "tsx watch server/src/main.ts",
+    "start": "tsx server/src/main.ts",
+    "redis": "docker run --rm -p 6381:6379 --name omi-bomba-redis redis:7-alpine",
+    "dev:client": "vite --config app/vite.config.ts",
+    "build:client": "vite build --config app/vite.config.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^5.2.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "hono": "^4.13.13",
+    "ioredis": "^6.0.0",
+    "tsx": "^4.23.15",
+    "ws": "^8.22.0",
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,55 @@
+# Desenvolvimento, e a base da produção (o overlay é docker-compose.prod.yml).
+#
+# No dia a dia basta o Redis (`npm run redis`) e `npm run dev`; este arquivo
+# sobe a imagem inteira, como em produção, para conferir o Dockerfile.
+#
+#   docker compose up --build        → http://localhost:3000
+#
+# Porta 6381 para o Redis: 6379 e 6380 já são de outros apps na mesma máquina
+# (guia de projeto novo, §1.5).
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Sem persistência: sala viva tem TTL de 4 h, e nada aqui é insubstituível.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    image: ghcr.io/jpmvale/omi-bomba-api:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      OMI_BOMBA_SESSION_SECRET: ${OMI_BOMBA_SESSION_SECRET:-segredo-de-dev-nao-use-em-producao-0123456789}
+      REDIS_URL: redis://redis:6379
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost:3000}
+      PORT: "3000"
+      OMI_BOMBA_VERSION: ${IMAGE_TAG:-dev}
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    stop_signal: SIGTERM
+    stop_grace_period: 20s
+    depends_on:
+      redis:
+        condition: service_healthy

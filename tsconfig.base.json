@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "composite": true,
+    "baseUrl": ".",
+    "paths": {
+      "@omi-bomba/rules": ["./packages/rules/src/index.ts"],
+      "@omi-bomba/bot": ["./packages/bot/src/index.ts"],
+      "@omi-bomba/store": ["./packages/store/src/index.ts"],
+      "@omi-bomba/store/redis": ["./packages/store/src/redis.ts"],
+      "@omi-bomba/protocol": ["./packages/protocol/src/index.ts"],
+      "@omi-bomba/protocol/validate": ["./packages/protocol/src/validate.ts"],
+      "@omi-bomba/room": ["./packages/room/src/index.ts"]
+    }
+  }
+}

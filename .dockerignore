@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+node_modules
+**/node_modules
+docs
+docs-tec
+*.md
+.github
+deploy
+app/build
+test-results
+playwright-report
