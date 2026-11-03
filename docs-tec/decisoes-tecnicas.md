@@ -15,9 +15,9 @@ O motor (`packages/rules`) é puro e determinístico: `passo(estado) → estado`
 dá um passo a cada 50 ms (`TICK_MS`); o cliente só manda a intenção (`game:input`:
 direção apertada e bomba) e desenha o que recebe. Ninguém consegue andar através de
 parede ou soltar duas bombas mexendo no cliente.
-**Perde-se:** latência. Com 50 ms de passo mais a rede, a tecla aparece na tela em
-~100–150 ms. Compensa-se na tela com interpolação entre os dois últimos quadros; não há
-predição no cliente (ainda).
+**Perde-se:** latência. Com 50 ms de passo mais a rede, a tecla aparecia na tela em
+~100–150 ms. Os outros jogadores seguem interpolados entre os dois últimos quadros; o
+próprio boneco passou a ser previsto no cliente (ADR-O13).
 
 ## ADR-O03 — Posições inteiras e movimento de casa em casa
 
@@ -90,3 +90,39 @@ Bomba, chute e caveira são campos do jogador (`bombas`, `chute`, `maldicao`), e
 chutada tem um `deslize` igual ao movimento do jogador. Sorteios novos (qual maldição,
 onde caem os itens de quem morreu) saem de `createRng(semente:motivo:passo:jogador)`: o
 motor continua puro e a mesma partida repetida dá o mesmo resultado.
+
+## ADR-O13 — O próprio boneco é previsto no cliente, com a mesma regra
+
+O "lag" que se sentia ao andar era a soma de ida da tecla, espera do passo, volta do
+quadro e o quadro de interpolação. A regra de andar saiu do `engine` para
+`packages/rules/src/movimento.ts` (`moverJogador`), e o cliente a roda para o próprio
+jogador num relógio de passos local (`app/src/jogo/previsao.ts`). Cada `game:input` leva
+um `seq`; o motor guarda o último aplicado e o passo em que chegou (`entradaSeq`,
+`entradaPasso`), e o quadro os devolve. Com isso o cliente sabe a que passo local o
+retrato do servidor corresponde, parte dele e repassa as entradas que vieram depois.
+Correção pequena desliza em ~70 ms; salto grande é salto.
+O servidor continua a autoridade: a previsão só decide o desenho. Bomba recém-solta entra
+na previsão para barrar a volta, como no servidor. O teste `app/test/previsao.test.ts`
+simula a rede (150 ms de ida e volta, e oscilando) e compara com o mesmo jogo sem atraso.
+**Perde-se:** um pouco de verdade na tela. Quem joga vê o próprio boneco onde ele VAI
+estar; uma bomba alheia que ainda não chegou pode fazer a tela voltar meia casa.
+
+## ADR-O14 — Toque guardado só para gente
+
+`aplicarEntrada(..., { guardarToque: true })` guarda a direção apertada por 6 passos
+(`toque`). Sem isso, a tecla apertada e solta entre dois passos do servidor sumia (duas
+mensagens no mesmo passo), e a curva só saía se a tecla estivesse segurada exatamente no
+centro da casa. A tecla que só repete o rumo atual não sobrescreve o toque: é o que chega
+quando a pessoa solta a curva e volta à tecla que segurava. O bot não usa: decide a cada
+passo, e com o toque guardado andaria uma casa a mais do que decidiu.
+
+## ADR-O15 — Bomba na mão e no ar não está em casa nenhuma
+
+A luva e o fantasma acrescentam dois estados à bomba: `carregadaPor` e `voo`. Só a bomba
+no chão (`noChao`) ocupa casa, barra caminho, explode e é detonada por fogo; nos outros
+dois estados o pavio fica parado (`explodeNoPasso` anda junto com o relógio). O voo guarda
+origem, direção e quantas casas anda; o quique só estende `casas`, e passar da borda é
+módulo da largura — o desenho faz a mesma conta. O fantasma é um campo do morto
+(`fantasma`, com o índice no `ANEL`), não um jogador a mais: placar, registro e ordem da
+partida não mudam. Cada volta da borda marca o abate (`voltou`), e o invariante de mortos
+passa a ser "abates da rodada menos voltas".

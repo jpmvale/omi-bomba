@@ -7,6 +7,7 @@ import { Retrato } from '../components/Retrato';
 import { quadroAnterior, quadroAtual, useArena } from '../jogo/arena';
 import { desenharArena, medir, segundosRestantes } from '../jogo/desenho';
 import { ligarControles, type Controle } from '../jogo/entrada';
+import { criarPrevisao, type Previsao } from '../jogo/previsao';
 
 type Enviar = (tipo: string, payload?: unknown) => void;
 
@@ -27,6 +28,7 @@ export function Jogo({
   const caixa = useRef<HTMLDivElement>(null);
   const tela = useRef<HTMLCanvasElement>(null);
   const controle = useRef<Controle | null>(null);
+  const previsao = useRef<Previsao | null>(null);
   const [chatAberto, setChatAberto] = useState(false);
   // Controle na tela para quem tem toque, mesmo que também tenha mouse (tablet
   // com teclado): sobra espaço, e quem tem teclado ignora.
@@ -46,9 +48,15 @@ export function Jogo({
   // Teclado e toque mandam a entrada; quem assiste não manda nada.
   useEffect(() => {
     if (!jogo || !matchId) return;
-    const c = ligarControles((dir: Dir | null, bomba: boolean) => enviar('game:input', { matchId, dir, bomba }));
+    // O próprio boneco anda na hora; o servidor confirma depois (`previsao.ts`).
+    const p = criarPrevisao(eu);
+    previsao.current = p;
+    const c = ligarControles((dir: Dir | null, bomba: boolean) => {
+      const seq = p.registrar(dir, bomba, performance.now());
+      enviar('game:input', { matchId, dir, bomba, seq });
+    });
     controle.current = c;
-    return () => { c.desligar(); controle.current = null; };
+    return () => { c.desligar(); controle.current = null; previsao.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, Boolean(jogo)]);
 
@@ -82,7 +90,8 @@ export function Jogo({
       const atual = quadroAtual();
       if (atual) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        desenharArena(ctx, medidas, atual, quadroAnterior(), personagens, agora);
+        const previsto = previsao.current?.onde(atual.view, atual.grade, agora) ?? null;
+        desenharArena(ctx, medidas, atual, quadroAnterior(), personagens, agora, eu, previsto);
       }
       quadro = requestAnimationFrame(pintar);
     };
@@ -92,7 +101,7 @@ export function Jogo({
       obs.disconnect();
       window.removeEventListener('resize', ajustar);
     };
-  }, [personagens, toque]);
+  }, [personagens, toque, eu]);
 
   if (!v) return <p className="fraco" style={{ textAlign: 'center', paddingTop: 40 }}>Carregando a arena…</p>;
 
@@ -135,7 +144,7 @@ export function Jogo({
           )}
           {!jogo && !acabou && <p className="fraco" style={{ textAlign: 'center' }}>Você está assistindo. Joga na próxima partida.</p>}
           {jogo && !toque && !acabou && (
-            <p className="fraco" style={{ textAlign: 'center' }}>Setas ou WASD para andar · Espaço para soltar bomba</p>
+            <p className="fraco" style={{ textAlign: 'center' }}>Setas ou WASD para andar · Espaço para bomba (e para levantar/arremessar com a luva)</p>
           )}
 
           {acabou && (
@@ -190,6 +199,7 @@ function Placar({ v, sala, eu }: { v: MatchView; sala: RoomView; eu: string }) {
             <div className="pilha" style={{ gap: 0, minWidth: 0 }}>
               <span className="placar-nome">{id === eu ? 'Você' : p.nickname}</span>
               {j?.vivo && <Poderes j={j} />}
+              {j && !j.vivo && j.fantasma && v.fase === 'JOGANDO' && <span className="placar-poderes">👻 na borda</span>}
             </div>
             <strong>{v.placar[id] ?? 0}</strong>
           </div>
@@ -206,6 +216,7 @@ function Poderes({ j }: { j: MatchView['jogadores'][number] }) {
   if (j.bombas > 1) partes.push(`💣${j.bombas}`);
   if (j.velocidade > 0) partes.push(`⏩${j.velocidade}`);
   if (j.chute) partes.push('🥾');
+  if (j.luva) partes.push('🧤');
   if (j.maldicao) partes.push('💀');
   if (partes.length === 0) return null;
   return <span className="placar-poderes">{partes.join(' ')}</span>;
@@ -216,6 +227,7 @@ export function frase(a: Abate, nomeDe: (id: string | null) => string): string {
   if (a.causa === 'FECHAMENTO') return `A arena esmagou ${nomeDe(a.vitima)}`;
   if (a.autor === a.vitima) return `${nomeDe(a.vitima)} caiu na própria bomba`;
   const ajuda = a.ajudantes.length > 0 ? ` (com ${a.ajudantes.map(nomeDe).join(', ')})` : '';
+  if (a.voltou) return `${nomeDe(a.autor)} pegou ${nomeDe(a.vitima)} da borda e voltou${ajuda}`;
   return `${nomeDe(a.autor)} pegou ${nomeDe(a.vitima)}${ajuda}`;
 }
 

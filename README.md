@@ -16,7 +16,10 @@ mesma arquitetura de sala, convite e bots, e o mesmo jeito de publicar na VPS.
   Coral, Carvão), únicos na arena.
 - Bots em três níveis para completar a arena.
 - Arena 15×13 nova a cada rodada, com caixas e itens de **fogo**, **velocidade**, **bomba**,
-  **chute** e **caveira** (maldição que passa adiante). Quem morre espalha os itens que tinha.
+  **chute**, **luva** (levanta e arremessa bomba) e **caveira** (maldição que passa adiante).
+  Quem morre espalha os itens que tinha.
+- Quem morre vira fantasma na borda e arremessa bombas para dentro; pegando alguém, volta.
+- O próprio boneco responde na hora: o navegador prevê o movimento e o servidor confirma.
 - Explosão em corrente; depois de 1, 3 ou 5 min (o anfitrião escolhe) caem blocos do céu
   em espiral, fechando a arena.
 - Registro de quem pegou quem e KDA no fim da partida.

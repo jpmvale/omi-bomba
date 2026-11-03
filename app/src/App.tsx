@@ -43,6 +43,16 @@ export function App() {
         errar(e.de ? `${nomeDe(sala, e.de)} te passou a caveira: ${efeito}!` : `Caveira: ${efeito}!`);
       }
       if (e.tipo === 'MALDICAO' && e.de === eu) avisar(`Você passou a caveira para ${nomeDe(sala, e.playerId)}`);
+      if (e.tipo === 'VOLTOU') {
+        if (e.playerId === eu) pontuou('Você voltou para a arena!');
+        else avisar(`${nomeDe(sala, e.playerId)} voltou da borda`);
+      }
+    }
+    // Virou fantasma: diz o que dá para fazer da borda.
+    const euAntes = anterior?.matchId === v.matchId ? anterior.jogadores.find((j) => j.id === eu) : undefined;
+    const euAgora = v.jogadores.find((j) => j.id === eu);
+    if (euAntes && !euAntes.fantasma && euAgora?.fantasma && v.fase === 'JOGANDO') {
+      avisar('Na borda: ande por ela e arremesse bombas para dentro. Pegou alguém, você volta!');
     }
     if (anterior && anterior.matchId === v.matchId && anterior.fase !== 'FIM_DA_RODADA' && v.fase === 'FIM_DA_RODADA') {
       if (v.vencedorDaRodada) pontuou(`${nomeDe(sala, v.vencedorDaRodada)} venceu a rodada ${v.rodada}`);

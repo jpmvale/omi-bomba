@@ -24,7 +24,7 @@ números vêm de `packages/rules/src/constantes.ts`, e mudar um deles é mudar u
 - **RN-11** Os nascedouros (os 4 cantos e o centro) e as casas vizinhas nascem sem caixa,
   para ninguém começar trancado.
 - **RN-12** ~35% das caixas escondem um item. Ninguém sabe qual até a caixa quebrar. O
-  sorteio pesa: fogo 30, bomba 28, velocidade 22, caveira 12, chute 8 (o mais raro).
+  sorteio pesa: fogo 28, bomba 26, velocidade 20, caveira 12, chute 7 e luva 7 (os mais raros).
 
 ## Andar
 
@@ -32,6 +32,12 @@ números vêm de `packages/rules/src/constantes.ts`, e mudar um deles é mudar u
   termina a casa em que está (ninguém para entre duas casas).
 - **RN-21** Voltar no sentido contrário é na hora, e para no centro da casa a que voltou;
   virar para o lado só acontece no centro de uma casa.
+- **RN-24** A tecla apertada vale por 0,3 s mesmo se for solta antes: o toque rápido de
+  volta não se perde, e a curva pedida um pouco antes da esquina é feita nela (voltar à
+  tecla que se segurava não cancela a curva pedida). Só vale para gente; o bot decide a
+  cada passo.
+- **RN-25** O próprio boneco obedece na hora na tela de quem joga; o servidor confirma e,
+  discordando, a tela se corrige em poucos quadros.
 - **RN-22** Parede, pilar, caixa e bomba bloqueiam. Exceção: quem acabou de soltar uma
   bomba pode sair de cima dela; depois que saiu, ela bloqueia como as outras.
 - **RN-23** Jogadores atravessam uns aos outros.
@@ -62,8 +68,13 @@ números vêm de `packages/rules/src/constantes.ts`, e mudar um deles é mudar u
   caveira passa a maldição adiante, com o tempo cheio, e fica livre; por 2 s não a recebe de
   volta.
 - **RN-46** Quem morre espalha pela arena tudo que tinha pegado: cada nível de fogo,
-  velocidade e bomba, o chute e a caveira viram itens em casas livres sorteadas (fora do fogo
+  velocidade e bomba, o chute, a luva e a caveira viram itens em casas livres sorteadas (fora do fogo
   e das casas que a arena fecha nos 5 s seguintes).
+- **RN-47** **Luva** (rara como o chute): de frente para uma bomba parada, o botão de ação a
+  levanta em vez de soltar outra; apertando de novo, ela é arremessada 2 casas para onde o
+  jogador olha. Se cai em parede, pilar, caixa, bomba, item ou jogador, quica casa a casa na
+  mesma direção até achar uma livre; passando da borda, entra pelo outro lado da arena. Na
+  mão e no ar o pavio fica parado. Quem morre carregando deixa a bomba cair ali.
 
 ## Rodada e partida
 
@@ -80,6 +91,22 @@ números vêm de `packages/rules/src/constantes.ts`, e mudar um deles é mudar u
   combinadas.
 - **RN-55** O anfitrião pode encerrar: leva quem lidera sozinho; empatados, ninguém.
 - **RN-56** No fim, o anfitrião escolhe revanche (mesmo grupo, começa direto) ou voltar à sala.
+
+## Fantasma na borda
+
+- **RN-70** Quem morre vira fantasma 1 s depois, na casa da borda mais perto de onde caiu.
+  A borda é o anel de parede em volta da arena, fora da área de jogo.
+- **RN-71** O fantasma anda pela borda com ← e →: em cima e embaixo, para o lado da seta;
+  nas laterais, ← sobe e → desce (↑ e ↓ também valem ali). Segurando a mesma tecla, dobra o
+  canto.
+- **RN-72** O botão de ação arremessa para dentro, 2 casas, a bomba do começo: uma por vez e
+  com o fogo inicial, por mais itens que tivesse em vida. Ela quica como a da luva. Do canto
+  não dá para arremessar.
+- **RN-73** Fantasma não pega item, não leva fogo, não passa caveira e não conta para o fim
+  da rodada: sobrando um vivo, a rodada acaba.
+- **RN-74** Se o fogo da bomba do fantasma matar alguém, o fantasma **volta à arena** na casa
+  de quem caiu, sem poderes, e fica 2 s imune ao fogo (pisca). A arena fechando ainda o mata.
+  O abate conta no registro, marcado como volta da borda.
 
 ## Registro
 

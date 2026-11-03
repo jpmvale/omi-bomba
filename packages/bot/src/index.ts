@@ -22,8 +22,16 @@
  */
 
 import {
+  ALCANCE_INICIAL,
   ALTURA,
+  ANEL,
   CAIXA,
+  anelEm,
+  anelMaisPerto,
+  casaDoFantasma,
+  destinoDoArremesso,
+  dirNoAnel,
+  paraDentro,
   ESPIRAL,
   FECHAMENTO_INTERVALO_PASSOS,
   CHAO,
@@ -88,9 +96,17 @@ export function decidirEntrada(
 ): Entrada {
   if (visao.fase !== 'JOGANDO') return NADA;
   const mim = visao.jogadores.find((j) => j.id === eu);
-  if (!mim || !mim.vivo) return NADA;
+  if (!mim) return NADA;
   const perfil = PERFIS[dificuldade];
+  if (!mim.vivo) return decidirFantasma(visao, mim, perfil, rng);
 
+  // Bomba na mão: arremessa logo, para a frente, e o resto do plano segue.
+  const naMao = visao.bombas.some((b) => b.carregadaPor === eu);
+
+  // Bomba na mão de alguém não está em casa nenhuma; a que está no ar conta
+  // como já estando onde vai cair (é lá que vai explodir).
+  const original = visao;
+  visao = { ...visao, bombas: visao.bombas.filter((b) => b.carregadaPor === null) };
   const bombas = visao.bombas.filter((b) => b.dono === eu || visao.passo - b.colocadaNoPasso >= perfil.reacao);
   const perigo = mapaDePerigo(visao, bombas);
   const porCasa = Math.ceil(UNIDADE / velocidadeDe(mim));
@@ -116,13 +132,76 @@ export function decidirEntrada(
   if (escolha.dir !== null && mim.maldicao?.tipo === 'INVERTIDO' && dificuldade !== 'FACIL') {
     escolha = { ...escolha, dir: OPOSTA[escolha.dir] };
   }
+  if (naMao) return { ...escolha, bomba: true };
+  // Com a luva, o botão diante de uma bomba a levanta em vez de soltar outra:
+  // o plano era soltar, então não aperta.
+  if (escolha.bomba && mim.luva && bombaAFrente(original, mim)) return { ...escolha, bomba: false };
   return escolha;
+}
+
+function bombaAFrente(v: VisaoDoBot, mim: JogadorNoJogo): boolean {
+  const [dx, dy] = DELTA[mim.olhando];
+  return v.bombas.some((b) => b.carregadaPor === null && b.voo === null && b.x === mim.x + dx && b.y === mim.y + dy);
 }
 
 /** Tem bomba sobrando, e a caveira não o impede de soltar. */
 function podeSoltar(v: VisaoDoBot, mim: JogadorNoJogo): boolean {
   if (mim.maldicao?.tipo === 'SEM_BOMBA') return false;
   return v.bombas.filter((b) => b.dono === mim.id).length < mim.bombas;
+}
+
+/**
+ * Fantasma: corre pela borda até uma casa de onde a bomba arremessada pega um
+ * adversário, e arremessa. O fácil se distrai e arremessa ao acaso.
+ */
+function decidirFantasma(v: VisaoDoBot, mim: JogadorNoJogo, perfil: Perfil, rng: Rng): Entrada {
+  const f = mim.fantasma;
+  if (!f) return NADA;
+  const alvos = v.jogadores.filter((j) => j.vivo && j.id !== mim.id).map((j) => indice(...destino(j)));
+  if (alvos.length === 0) return NADA;
+  const mundo = { ...v, bombas: v.bombas.filter((b) => b.carregadaPor === null) };
+
+  const bons: number[] = [];
+  for (let k = 0; k < ANEL.length; k++) {
+    const d = paraDentro(k);
+    if (!d) continue;
+    const [x, y] = anelEm(k);
+    const pouso = destinoDoArremesso(mundo, x, y, d, ALCANCE_INICIAL);
+    if (!pouso) continue;
+    const casas = alcanceDa(v, hipotetica(mim.id, pouso.x, pouso.y, ALCANCE_INICIAL, v.passo), mundo.bombas);
+    if (alvos.some((a) => casas.includes(a))) bons.push(k);
+  }
+
+  const aqui = casaDoFantasma(f);
+  const armada = v.bombas.some((b) => b.dono === mim.id);
+  if (!armada && bons.includes(aqui) && (perfil.reacao === 0 || rng.nextInt(perfil.reacao) === 0)) {
+    return { dir: null, bomba: true };
+  }
+  if (perfil.passeio > 0 && rng.nextInt(1000) < perfil.passeio) {
+    return { dir: dirNoAnel(f.anel, rng.nextInt(2) === 0 ? 1 : -1), bomba: !armada && rng.nextInt(20) === 0 };
+  }
+
+  // A casa boa mais perto, contando pelos dois lados do anel; sem nenhuma, a
+  // do anel mais perto do primeiro adversário.
+  const n = ANEL.length;
+  const distancia = (k: number): [number, 1 | -1] => {
+    const ida = (k - aqui + n) % n;
+    return ida <= n - ida ? [ida, 1] : [n - ida, -1];
+  };
+  const alvo = bons.length > 0
+    ? bons.reduce((a, b) => (distancia(b)[0] < distancia(a)[0] ? b : a))
+    : anelMaisPerto(alvos[0]! % LARGURA, Math.floor(alvos[0]! / LARGURA));
+  const [dist, sentido] = distancia(alvo);
+  if (dist === 0) return NADA;
+  // No meio do caminho, a tecla que vale é a do trecho de onde saiu.
+  return { dir: dirNoAnel(f.anel, f.mov ? (sentido === f.mov.sentido ? f.mov.sentido : -f.mov.sentido as 1 | -1) : sentido), bomba: false };
+}
+
+function hipotetica(dono: PlayerId, x: number, y: number, alcance: number, passo: number): Bomba {
+  return {
+    id: -1, x, y, dono, alcance,
+    colocadaNoPasso: passo, explodeNoPasso: passo + PAVIO_PASSOS, deslize: null, carregadaPor: null, voo: null,
+  };
 }
 
 function planejar(
@@ -329,7 +408,7 @@ function rotaSegura(
 
 /** Uma bomba aqui acerta alguma coisa que valha? */
 function valeBomba(v: VisaoDoBot, mim: JogadorNoJogo, x: number, y: number, perfil: Perfil): boolean {
-  const casas = alcanceDa(v, { id: -1, x, y, dono: mim.id, alcance: mim.alcance, colocadaNoPasso: 0, explodeNoPasso: 0, deslize: null }, v.bombas);
+  const casas = alcanceDa(v, hipotetica(mim.id, x, y, mim.alcance, 0), v.bombas);
   if (casas.some((i) => v.grade[i] === CAIXA)) return true;
   if (!perfil.caca) return false;
   return v.jogadores.some((j) => {
@@ -354,10 +433,7 @@ function fugaDaBomba(
   porCasa: number,
 ): Dir[] | null {
   if (!valeBomba(v, mim, x, y, perfil)) return null;
-  const hipotese: Bomba = {
-    id: -1, x, y, dono: mim.id, alcance: mim.alcance,
-    colocadaNoPasso: v.passo, explodeNoPasso: v.passo + PAVIO_PASSOS, deslize: null,
-  };
+  const hipotese = hipotetica(mim.id, x, y, mim.alcance, v.passo);
   const comBomba = [...bombas, hipotese];
   const fuga = rotaSegura(v, mapaDePerigo(v, comBomba), x, y, 1, porCasa, perfil.folga, comBomba);
   return fuga !== null && fuga.length > 0 ? fuga : null;

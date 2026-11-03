@@ -21,10 +21,12 @@ export function Regras({ aoFechar }: { aoFechar: () => void }) {
               <li><strong>💣 bomba</strong>: uma bomba a mais ao mesmo tempo (até {BOMBAS_MAX}).</li>
               <li><strong>⏩ velocidade</strong>: mais rápido (até {VELOCIDADE_MAX_NIVEL} níveis).</li>
               <li><strong>🥾 chute</strong> (raro): ande contra uma bomba para empurrá-la; ela escorrega até bater em algo.</li>
+              <li><strong>🧤 luva</strong> (rara): de frente para uma bomba, aperte a bomba para levantá-la; aperte de novo para arremessá-la 2 casas para onde está olhando. Se cair em bloco, bomba ou alguém, quica até a próxima casa livre (e passa pela borda para o outro lado). Na mão ou no ar, o pavio para.</li>
               <li><strong>💀 caveira</strong>: maldição por 15 s — direcional invertido, sem bomba ou lento. Encoste em alguém para passar a caveira adiante.</li>
             </ul>
             Fogo destrói item no chão. Quem morre espalha pela arena os itens que tinha.
           </li>
+          <li><strong>👻 Quem morre não sai do jogo:</strong> vira fantasma na borda. Anda por ela com ← e → (nas laterais, ← sobe e → desce) e arremessa para dentro uma bomba simples por vez. Se essa bomba pegar alguém, o fantasma <strong>volta à arena</strong> no lugar de quem caiu, sem poderes.</li>
           <li>Depois do tempo combinado na sala (1, 3 ou 5 min), <strong>blocos caem do céu</strong> do canto para o centro, em espiral. Quem estiver embaixo é esmagado.</li>
           <li>Se cair a conexão, um bot segura o seu personagem até você voltar.</li>
         </ul>

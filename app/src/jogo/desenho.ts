@@ -11,6 +11,7 @@ import type { Personagem } from '@omi-bomba/protocol';
 import {
   ALTURA,
   DELTA,
+  anelEm,
   ESPIRAL,
   FECHAMENTO_INTERVALO_PASSOS,
   fechadasEm,
@@ -23,6 +24,7 @@ import {
 } from '@omi-bomba/rules';
 import type { Quadro } from './arena';
 import { desenharPersonagem } from './personagens';
+import type { Previsto } from './previsao';
 
 const COR = {
   chao: '#1d2b22',
@@ -43,6 +45,8 @@ const COR = {
   itemFogo: '#ff6a00',
   itemVelocidade: '#3fa9f5',
   itemChute: '#c0392b',
+  itemLuva: '#e8a33d',
+  itemLuvaLinha: '#8a5a12',
   itemFundo: '#f3eee2',
   caveiraFundo: '#3a2346',
   caveira: '#ece6f5',
@@ -70,6 +74,30 @@ function posicao(j: JogadorVisto): [number, number] {
   return [j.x + dx * f, j.y + dy * f];
 }
 
+/** Onde o fantasma está na borda, em casas. */
+function posicaoDoFantasma(j: JogadorVisto): [number, number] | null {
+  const f = j.fantasma;
+  if (!f) return null;
+  const [ax, ay] = anelEm(f.anel);
+  if (!f.mov) return [ax, ay];
+  const [bx, by] = anelEm(f.anel + f.mov.sentido);
+  const t = f.mov.progresso / UNIDADE;
+  return [ax + (bx - ax) * t, ay + (by - ay) * t];
+}
+
+/** Bomba no ar: a posição no chão (dando a volta na arena) e a altura do arco, em casas. */
+function posicaoNoAr(b: MatchView['bombas'][number], progresso: number): [number, number, number] {
+  const voo = b.voo!;
+  const [dx, dy] = DELTA[voo.dir];
+  const k = progresso / UNIDADE;
+  const x = (((voo.deX + dx * k) % LARGURA) + LARGURA) % LARGURA;
+  const y = (((voo.deY + dy * k) % ALTURA) + ALTURA) % ALTURA;
+  // Um arco por casa: o primeiro trecho é o arremesso, os seguintes os quiques.
+  const trecho = Math.min(k / 2, 1);
+  const altura = k <= 2 ? Math.sin(Math.PI * trecho) * 1.1 : Math.abs(Math.sin(Math.PI * (k - 2))) * 0.45;
+  return [x, y, altura];
+}
+
 const eBorda = (x: number, y: number): boolean => x === 0 || y === 0 || x === LARGURA - 1 || y === ALTURA - 1;
 const ePilar = (x: number, y: number): boolean => x % 2 === 0 && y % 2 === 0;
 
@@ -80,6 +108,8 @@ export function desenharArena(
   anterior: Quadro | null,
   personagens: Map<string, Personagem>,
   agora: number,
+  eu: string | null = null,
+  previsto: Previsto | null = null,
 ): void {
   const { casa } = m;
   const v = atual.view;
@@ -124,8 +154,11 @@ export function desenharArena(
   for (const it of v.itens) desenharItem(ctx, it.x * casa, it.y * casa, casa, it.tipo, agora);
 
   // Bombas: incham conforme o pavio acaba. A chutada desliza entre os quadros.
+  // A que está na mão é desenhada em cima de quem carrega; a que está no ar,
+  // depois dos personagens, que ela passa por cima.
   const bombasAntes = new Map(anterior && anterior.view.matchId === v.matchId ? anterior.view.bombas.map((b) => [b.id, b]) : []);
   for (const b of v.bombas) {
+    if (b.carregadaPor !== null || b.voo !== null) continue;
     const falta = Math.max(0, b.explodeNoPasso - passoAgora);
     let [bx, by] = posicaoDaBomba(b);
     const ja = bombasAntes.get(b.id);
@@ -143,11 +176,37 @@ export function desenharArena(
   // Personagens, de cima para baixo (quem está mais embaixo fica na frente).
   const antes = new Map(anterior && anterior.view.matchId === v.matchId ? anterior.view.jogadores.map((j) => [j.id, j]) : []);
   const ordem = [...v.jogadores].sort((a, b) => posicao(a)[1] - posicao(b)[1]);
+  const cabecas = new Map<string, [number, number]>();
   for (const j of ordem) {
     const p = personagens.get(j.id) ?? 'pavio';
-    let [x, y] = posicao(j);
     const ja = antes.get(j.id);
-    if (ja) {
+
+    // Fantasma: anda pela borda, meio transparente, num carrinho de nuvem.
+    const fx = posicaoDoFantasma(j);
+    if (!j.vivo && fx) {
+      let [x, y] = fx;
+      const fa = ja ? posicaoDoFantasma(ja) : null;
+      if (fa && Math.abs(fa[0] - x) + Math.abs(fa[1] - y) < 1.5) {
+        x = fa[0] + (x - fa[0]) * alpha;
+        y = fa[1] + (y - fa[1]) * alpha;
+      }
+      const cx = x * casa + casa / 2;
+      const cy = y * casa + casa / 2;
+      desenharNuvem(ctx, cx, cy + casa * 0.28, casa);
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      desenharPersonagem(ctx, p, cx, cy - casa * 0.05, casa * 0.8, j.olhando, j.fantasma?.mov ? j.fantasma.mov.progresso / UNIDADE : 0, agora);
+      ctx.restore();
+      continue;
+    }
+
+    const meu = j.id === eu && j.vivo && previsto !== null;
+    let [x, y] = posicao(j);
+    let olhando = j.olhando;
+    let anda = j.mov ? (j.mov.progresso / UNIDADE) : 0;
+    if (meu) {
+      ({ x, y, olhando, anda } = previsto);
+    } else if (ja) {
       const [ax, ay] = posicao(ja);
       // Salto grande é rodada nova: teletransporta em vez de deslizar pela arena.
       if (Math.abs(ax - x) + Math.abs(ay - y) < 1.5) {
@@ -168,12 +227,40 @@ export function desenharArena(
       ctx.restore();
       continue;
     }
-    const anda = j.mov ? (j.mov.progresso / UNIDADE) : 0;
-    desenharPersonagem(ctx, p, cx, cy, casa, j.olhando, anda, agora);
+    // Acabou de voltar da borda: pisca enquanto o fogo não o pega.
+    const protegido = j.protegidoAte > passoAgora;
+    if (protegido) {
+      ctx.save();
+      ctx.globalAlpha = Math.floor(agora / 90) % 2 === 0 ? 0.35 : 0.85;
+    }
+    desenharPersonagem(ctx, p, cx, cy, casa, olhando, anda, agora);
+    if (protegido) ctx.restore();
+    cabecas.set(j.id, [cx, cy - casa * 0.62]);
     // Com a caveira: ela pisca em cima da cabeça.
     if (j.maldicao && Math.floor(agora / 180) % 2 === 0) {
       desenharCaveira(ctx, cx, cy - casa * 0.62, casa * 0.42);
     }
+  }
+
+  // Bomba na mão, em cima da cabeça; bomba no ar, num arco por cima de tudo.
+  for (const b of v.bombas) {
+    const falta = Math.max(0, b.explodeNoPasso - passoAgora);
+    if (b.carregadaPor !== null) {
+      const cabeca = cabecas.get(b.carregadaPor);
+      if (cabeca) desenharBomba(ctx, cabeca[0], cabeca[1] - casa * 0.05, casa * 0.8, falta, agora);
+      continue;
+    }
+    if (!b.voo) continue;
+    const ja = bombasAntes.get(b.id);
+    const progresso = ja?.voo ? ja.voo.progresso + (b.voo.progresso - ja.voo.progresso) * alpha : b.voo.progresso;
+    const [bx, by, h] = posicaoNoAr(b, progresso);
+    const px = bx * casa + casa / 2;
+    const py = by * casa + casa / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(px, py + casa * 0.3, casa * 0.25, casa * 0.09, 0, 0, Math.PI * 2);
+    ctx.fill();
+    desenharBomba(ctx, px, py - h * casa, casa, falta, agora);
   }
 
   // Os blocos do fechamento caem do céu: a espiral é geometria fixa e o passo
@@ -203,6 +290,15 @@ function posicaoDaBomba(b: MatchView['bombas'][number]): [number, number] {
   const [dx, dy] = DELTA[b.deslize.dir];
   const f = b.deslize.progresso / UNIDADE;
   return [b.x + dx * f, b.y + dy * f];
+}
+
+function desenharNuvem(ctx: CanvasRenderingContext2D, cx: number, cy: number, t: number): void {
+  ctx.fillStyle = 'rgba(236, 230, 245, 0.75)';
+  ctx.beginPath();
+  ctx.arc(cx - t * 0.22, cy, t * 0.16, 0, Math.PI * 2);
+  ctx.arc(cx, cy - t * 0.05, t * 0.2, 0, Math.PI * 2);
+  ctx.arc(cx + t * 0.22, cy, t * 0.16, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function desenharCaveira(ctx: CanvasRenderingContext2D, cx: number, cy: number, t: number): void {
@@ -332,6 +428,22 @@ function desenharItem(ctx: CanvasRenderingContext2D, px: number, py: number, t: 
     ctx.fill();
     ctx.fillStyle = '#7a1f16';
     ctx.fillRect(cx - t * 0.16, cy + t * 0.15, t * 0.38, t * 0.05);
+  } else if (tipo === 'LUVA') {
+    // Uma luva aberta: a palma e quatro dedos, e o polegar de lado.
+    ctx.fillStyle = COR.itemLuva;
+    ctx.strokeStyle = COR.itemLuvaLinha;
+    ctx.lineWidth = Math.max(1, t * 0.04);
+    arredondado(ctx, cx - t * 0.15, cy - t * 0.04, t * 0.3, t * 0.26, t * 0.08);
+    ctx.fill();
+    ctx.stroke();
+    for (let k = 0; k < 4; k++) {
+      arredondado(ctx, cx - t * 0.15 + k * t * 0.077, cy - t * 0.24, t * 0.07, t * 0.24, t * 0.035);
+      ctx.fill();
+      ctx.stroke();
+    }
+    arredondado(ctx, cx - t * 0.27, cy - t * 0.02, t * 0.15, t * 0.08, t * 0.04);
+    ctx.fill();
+    ctx.stroke();
   } else if (tipo === 'CAVEIRA') {
     desenharCaveira(ctx, cx, cy, t * 0.62);
   } else {

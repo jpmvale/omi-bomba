@@ -5,7 +5,7 @@
  */
 
 import { ALCANCE_MAX, ALTURA, BOMBAS_MAX, LARGURA, UNIDADE, VELOCIDADE_MAX_NIVEL } from './constantes.js';
-import { DELTA, indice } from './mapa.js';
+import { ANEL, DELTA, indice } from './mapa.js';
 import { CHAO, type MatchState } from './types.js';
 
 export function conferirInvariantes(m: MatchState): string[] {
@@ -23,15 +23,25 @@ export function conferirInvariantes(m: MatchState): string[] {
     if (j.alcance < 1 || j.alcance > ALCANCE_MAX) erros.push(`${j.id} com alcance ${j.alcance}`);
     if (j.velocidade < 0 || j.velocidade > VELOCIDADE_MAX_NIVEL) erros.push(`${j.id} com velocidade ${j.velocidade}`);
     if (!j.vivo && j.mov) erros.push(`${j.id} morto e andando`);
+    if (j.vivo && j.fantasma) erros.push(`${j.id} vivo e fantasma`);
+    if (j.fantasma && (j.fantasma.anel < 0 || j.fantasma.anel >= ANEL.length)) erros.push(`${j.id} fora do anel`);
     const minhas = m.bombas.filter((b) => b.dono === j.id).length;
     if (j.bombas < 1 || j.bombas > BOMBAS_MAX) erros.push(`${j.id} com capacidade ${j.bombas}`);
-    // Quem morre devolve a capacidade, mas as bombas que já armou ainda explodem.
-    if (j.vivo && minhas > j.bombas) erros.push(`${j.id} com ${minhas} bombas armadas e capacidade ${j.bombas}`);
-    if (!j.vivo && (j.maldicao || j.chute)) erros.push(`${j.id} morto ainda com item`);
+    // Quem morre devolve a capacidade, mas as bombas que já armou ainda
+    // explodem — e quem volta da borda pode ter as do tempo de vivo e a de
+    // fantasma ainda armadas.
+    if (j.vivo && !j.voltou && minhas > j.bombas) erros.push(`${j.id} com ${minhas} bombas armadas e capacidade ${j.bombas}`);
+    if (!j.vivo && (j.maldicao || j.chute || j.luva)) erros.push(`${j.id} morto ainda com item`);
+    const naMao = m.bombas.filter((b) => b.carregadaPor === j.id).length;
+    if (naMao > 1 || (naMao > 0 && !j.vivo)) erros.push(`${j.id} carregando ${naMao} bombas`);
+    if (naMao > 0 && !j.luva) erros.push(`${j.id} carregando bomba sem luva`);
   }
 
   const casas = new Set<number>();
   for (const b of m.bombas) {
+    if (b.carregadaPor !== null && b.voo !== null) erros.push(`bomba ${b.id} na mão e no ar`);
+    if (b.voo && (b.voo.progresso < 0 || b.voo.progresso > b.voo.casas * UNIDADE)) erros.push(`bomba ${b.id} com voo ${b.voo.progresso}`);
+    if (b.carregadaPor !== null || b.voo !== null) continue;
     const i = indice(b.x, b.y);
     if (casas.has(i)) erros.push(`duas bombas em ${b.x},${b.y}`);
     casas.add(i);
@@ -50,9 +60,11 @@ export function conferirInvariantes(m: MatchState): string[] {
     if (itensVistos.has(i)) erros.push(`dois itens em ${it.x},${it.y}`);
     itensVistos.add(i);
   }
+  // Cada morte é um abate; cada volta da borda desfaz uma.
   const mortos = m.jogadores.filter((j) => !j.vivo).length;
-  const abatesDaRodada = m.abates.filter((a) => a.rodada === m.rodada).length;
-  if (abatesDaRodada !== mortos) erros.push(`${mortos} mortos e ${abatesDaRodada} abates na rodada`);
+  const daRodada = m.abates.filter((a) => a.rodada === m.rodada);
+  const liquido = daRodada.length - daRodada.filter((a) => a.voltou).length;
+  if (liquido !== mortos) erros.push(`${mortos} mortos e ${liquido} abates líquidos na rodada`);
   const placarTotal = Object.values(m.placar).reduce((a, b) => a + b, 0);
   if (placarTotal > m.rodada) erros.push('mais vitórias que rodadas');
   return erros;

@@ -31,6 +31,17 @@ export const BOMBAS_MAX = 8;
 /** Bomba chutada anda 1 casa a cada 3 passos — mais rápido que qualquer pessoa. */
 export const DESLIZE_POR_PASSO = 334;
 
+/** Bomba arremessada voa 2 casas, a 2 passos por casa, e quica até achar casa livre. */
+export const ARREMESSO_CASAS = 2;
+export const VOO_POR_PASSO = 500;
+
+/** O toque fica guardado por 0,3 s: dá para pedir a curva um pouco antes da esquina. */
+export const TOQUE_PASSOS = 6;
+
+/** Morto vira fantasma depois de 1 s; quem volta da borda fica 2 s imune ao fogo. */
+export const FANTASMA_APOS_PASSOS = 20;
+export const PROTECAO_AO_VOLTAR = 2 * 20;
+
 /** A caveira dura 15 s, e lento é bem abaixo da velocidade normal. */
 export const MALDICAO_PASSOS = 15 * 20;
 export const VELOCIDADE_LENTA = 110;
@@ -57,8 +68,8 @@ export const fechamentoEmPassos = (minutos: number): number => minutos * 60 * PA
 export const DENSIDADE_DE_CAIXAS = 0.7;
 export const CHANCE_DE_ITEM = 0.35;
 
-/** Peso de cada item no sorteio das caixas. O chute é o mais raro. */
-export const PESO_DOS_ITENS = { FOGO: 30, BOMBA: 28, VELOCIDADE: 22, CAVEIRA: 12, CHUTE: 8 } as const;
+/** Peso de cada item no sorteio das caixas. Chute e luva são os mais raros. */
+export const PESO_DOS_ITENS = { FOGO: 28, BOMBA: 26, VELOCIDADE: 20, CAVEIRA: 12, CHUTE: 7, LUVA: 7 } as const;
 
 export const MIN_JOGADORES = 2;
 export const MAX_JOGADORES = 5;
