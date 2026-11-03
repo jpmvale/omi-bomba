@@ -42,6 +42,9 @@ presa ao `deploy.sh`, `omi-bomba <sha>`.
    `OMI_BOMBA_SESSION_SECRET=$(openssl rand -base64 48)`.
 5. **Chave de deploy** dedicada no `authorized_keys` com o forced command do `deploy.sh`;
    secrets no repositório.
-6. Rodar o **Deploy** à mão (`workflow_dispatch`). Conferir a visibilidade do pacote no GHCR
+6. **Redis uma vez**: o `deploy.sh` sobe só a `api` com `--no-deps`, então o Redis
+   nasce à mão no primeiro deploy:
+   `cd ~/apps/omi-bomba && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d redis`.
+7. Rodar o **Deploy** à mão (`workflow_dispatch`). Conferir a visibilidade do pacote no GHCR
    (guia §7.4) e `curl https://omi-bomba.imp-software.cloud/api/health`.
-7. Ligar `DEPLOY_ENABLED=true`.
+8. Ligar `DEPLOY_ENABLED=true`.
